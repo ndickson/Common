@@ -1,5 +1,7 @@
 #pragma once
 
+// This file declares common types and macros for use in other files.
+
 #include <stdint.h>
 
 #define OUTER_NAMESPACE     ndickson
