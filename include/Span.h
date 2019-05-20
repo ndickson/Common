@@ -18,29 +18,48 @@ OUTER_NAMESPACE_START
 LIBRARY_NAMESPACE_START
 
 template<typename T>
-struct Span : public Vec<T,2> {
+struct Span : public BaseVec<Span<T>,T,2> {
+	T v[2];
+
 	using ThisType = Span<T>;
-	using ParentType = Vec<T,2>;
 
 	INLINE Span() = default;
 	constexpr INLINE Span(const ThisType& that) = default;
 	constexpr INLINE Span(ThisType&& that) = default;
 
-	constexpr INLINE Span(const T& min, const T& max) : ParentType(min, max) {}
+	constexpr INLINE Span(const T& min, const T& max) : v{min, max} {}
 
 	template<typename S>
-	explicit constexpr INLINE Span(const Span<S>& that) : ParentType(T(that.min()), T(that.max())) {}
+	explicit constexpr INLINE Span(const Span<S>& that) : v{T(that.min()), T(that.max())} {}
 
 	struct MakeEmpty {
 		constexpr INLINE MakeEmpty() {}
 	};
 	// NOTE: This uses max and lowest instead of infinity and negative infinity
 	// for floating-point types, so that the average of min and max is 0, not NaN.
-	constexpr INLINE Span(MakeEmpty) : ParentType(std::numeric_limits<T>::max(),std::numeric_limits<T>::lowest()) {}
+	constexpr INLINE Span(MakeEmpty) : v{std::numeric_limits<T>::max(),std::numeric_limits<T>::lowest()} {}
 
 	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
 	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
 
+	constexpr INLINE T& operator[](size_t i) {
+		// This static_assert needs to be in a function, because it refers to
+		// ThisType, and the compiler doesn't let you reference the type that's
+		// currently being compiled from class scope.
+		static_assert(std::is_pod<ThisType>::value || !std::is_pod<T>::value, "Span should be a POD type if T is.");
+
+		return v[i];
+	}
+	constexpr INLINE const T& operator[](size_t i) const {
+		return v[i];
+	}
+
+	constexpr INLINE T* data() {
+		return v;
+	}
+	constexpr INLINE const T* data() const {
+		return v;
+	}
 	constexpr INLINE void makeEmpty() {
 		// NOTE: This uses max and lowest instead of infinity and negative infinity
 		// for floating-point types, so that the average of min and max is 0, not NaN.
@@ -57,32 +76,39 @@ struct Span : public Vec<T,2> {
 	}
 
 	constexpr INLINE T& min() {
-		return ParentType::v[0];
+		return v[0];
 	}
 	constexpr INLINE const T& min() const {
-		return ParentType::v[0];
+		return v[0];
 	}
 	// NOTE: For integer types, this is one more than the maximum value.
 	constexpr INLINE T& max() {
-		return ParentType::v[1];
+		return v[1];
 	}
 	// NOTE: For integer types, this is one more than the maximum value.
 	constexpr INLINE const T& max() const {
-		return ParentType::v[1];
+		return v[1];
 	}
 
 	constexpr INLINE T centre() const {
-		if constexpr (std::is_integral<T>::value) {
-			// Use >>1 instead of /2 for consistent floor with negative integers.
-			// (/2 gives ceiling for odd negative integers.)
-			// It's also very slightly faster.
-			return (min()+max())>>1;
+		if constexpr (std::is_pointer<T>::value || (std::is_integral<T>::value && std::is_unsigned<T>::value)) {
+			// size() always fits in the integer type if unsigned.
+			// min()+max() might overflow, so use size() instead.
+			// min()+max() is undefined for a pointer type, so use size().
+			return min() + (size()>>1);
+		}
+		else if constexpr (std::is_integral<T>::value) {
+			// The std::conditional is because Visual Studio 2017 doesn't respect
+			// the if constexpr, and errors in make_unsigned if T is float.
+			using unsignedT = typename std::make_unsigned<typename std::conditional<std::is_integral<T>::value,T,uint64>::type>::type;
+			// Signed integer type: size() might overflow, but to a valid unsigned integer.
+			return min() + T(((unsignedT)size())>>1);
 		}
 		else {
 			return T(0.5)*(min()+max());
 		}
 	}
-	constexpr INLINE T size() const {
+	constexpr INLINE auto size() const {
 		return max()-min();
 	}
 
@@ -121,17 +147,6 @@ struct Span : public Vec<T,2> {
 			max() = value;
 		}
 	}
-
-private:
-	// Delete functions from BaseVec and Vec<T,2> that don't apply to a Span
-	T length2() const = delete;
-	T length() const = delete;
-	T makeUnit() = delete;
-	T makeLength(T length) = delete;
-	template<typename THAT_SUBCLASS,typename S,size_t N>
-	decltype(conjugate(T())*S()) dot(const BaseVec<THAT_SUBCLASS,S,N>& that) const = delete;
-	decltype(T()*T()) cross(const ParentType& that) const = delete;
-	ParentType perpendicular() const = delete;
 };
 
 LIBRARY_NAMESPACE_END
