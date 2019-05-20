@@ -71,6 +71,23 @@ public:
 		}
 		return out;
 	}
+	constexpr INLINE Vec<T,N> centre() const {
+		// NOTE: Initialization to zero is just so that the function can be constexpr.
+		Vec<T,N> out(T(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = subclass()[i].centre();
+		}
+		return out;
+	}
+	constexpr INLINE Vec<declspec(subclass()[0].size()),N> size() const {
+		using S = declspec(subclass()[0].size());
+		// NOTE: Initialization to zero is just so that the function can be constexpr.
+		Vec<S,N> out(S(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = subclass()[i].size();
+		}
+		return out;
+	}
 
 	constexpr INLINE void operator+=(const Vec<T,N>& translation) {
 		for (size_t i = 0; i < N; ++i) {
