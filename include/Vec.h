@@ -99,7 +99,7 @@ public:
 	using ValueType = T;
 	static constexpr size_t TupleSize = N;
 
-private:
+protected:
 	constexpr INLINE T& operator[](size_t i) {
 		return subclass()[i];
 	}
@@ -258,13 +258,18 @@ public:
 			subclass()[i] /= that;
 		}
 	}
+};
+
+template<typename SUBCLASS,typename T,size_t N>
+struct NormVec : public BaseVec<SUBCLASS,T,N> {
+	using BaseType = BaseVec<SUBCLASS,T,N>;
 
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE decltype(conjugate(T())*S()) dot(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	constexpr INLINE decltype(conjugate(T())*S()) dot(const NormVec<THAT_SUBCLASS,S,N>& that) const {
 		using TS = decltype(conjugate(T())*S());
 		TS sum(0);
 		for (size_t i = 0; i < N; ++i) {
-			TS product = conjugate(subclass()[i])*that[i];
+			TS product = conjugate(BaseType::subclass()[i])*that[i];
 			sum += product;
 		}
 		return sum;
@@ -274,7 +279,7 @@ public:
 		using T2 = decltype(magnitude2(T()));
 		T2 sum(0);
 		for (size_t i = 0; i < N; ++i) {
-			T2 square = magnitude2(subclass()[i]);
+			T2 square = magnitude2(BaseType::subclass()[i]);
 			sum += square;
 		}
 		return sum;
@@ -308,7 +313,7 @@ public:
 
 // Generic, fixed-dimension vector class
 template<typename T,size_t N>
-struct Vec : BaseVec<Vec<T,N>,T,N> {
+struct Vec : NormVec<Vec<T,N>,T,N> {
 	T v[N];
 
 	using ThisType = Vec<T,N>;
@@ -385,7 +390,7 @@ struct Vec : BaseVec<Vec<T,N>,T,N> {
 // Specialize Vec for N=2, so that initialization constructors can be constexpr,
 // and to add cross, perpendicular, and any other additional functions.
 template<typename T>
-struct Vec<T,2> : BaseVec<Vec<T,2>,T,2> {
+struct Vec<T,2> : NormVec<Vec<T,2>,T,2> {
 	T v[2];
 
 private:
@@ -470,7 +475,7 @@ public:
 // Specialize Vec for N=3, so that initialization constructors can be constexpr,
 // and to add cross and any other additional functions.
 template<typename T>
-struct Vec<T,3> : BaseVec<Vec<T,3>,T,3> {
+struct Vec<T,3> : NormVec<Vec<T,3>,T,3> {
 	T v[3];
 
 private:
