@@ -9,7 +9,7 @@
 #include <type_traits>
 
 OUTER_NAMESPACE_START
-LIBRARY_NAMESPACE_START
+COMMON_LIBRARY_NAMESPACE_START
 
 // These are default implementations that do nothing for float, double, or integer types.
 constexpr INLINE const float& conjugate(const float& v) {
@@ -583,5 +583,5 @@ constexpr INLINE decltype(magnitude2(T())) magnitude2(const Vec<T,N>& v) {
 	return v.length2();
 }
 
-LIBRARY_NAMESPACE_END
+COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
