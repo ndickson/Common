@@ -9,7 +9,7 @@
 #include <type_traits>
 
 OUTER_NAMESPACE_START
-LIBRARY_NAMESPACE_START
+COMMON_LIBRARY_NAMESPACE_START
 
 template<typename SUBCLASS,typename T,size_t N>
 struct BaseBox {
@@ -79,8 +79,8 @@ public:
 		}
 		return out;
 	}
-	constexpr INLINE Vec<declspec(subclass()[0].size()),N> size() const {
-		using S = declspec(subclass()[0].size());
+	constexpr INLINE Vec<decltype(T()-T()),N> size() const {
+		using S = decltype(T()-T());
 		// NOTE: Initialization to zero is just so that the function can be constexpr.
 		Vec<S,N> out(S(0));
 		for (size_t i = 0; i < N; ++i) {
@@ -294,5 +294,5 @@ public:
 	}
 };
 
-LIBRARY_NAMESPACE_END
+COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
