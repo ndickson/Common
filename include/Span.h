@@ -15,7 +15,7 @@
 #include <type_traits>
 
 OUTER_NAMESPACE_START
-LIBRARY_NAMESPACE_START
+COMMON_LIBRARY_NAMESPACE_START
 
 template<typename T>
 struct Span : public BaseVec<Span<T>,T,2> {
@@ -149,5 +149,5 @@ struct Span : public BaseVec<Span<T>,T,2> {
 	}
 };
 
-LIBRARY_NAMESPACE_END
+COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
