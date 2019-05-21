@@ -4,15 +4,15 @@
 
 #include <stdint.h>
 
-#define OUTER_NAMESPACE     ndickson
-#define LIBRARY_NAMESPACE   Common
+#define OUTER_NAMESPACE             ndickson
+#define COMMON_LIBRARY_NAMESPACE    Common
 #define OUTER_NAMESPACE_START   namespace OUTER_NAMESPACE {
 #define OUTER_NAMESPACE_END     }
-#define LIBRARY_NAMESPACE_START namespace LIBRARY_NAMESPACE {
-#define LIBRARY_NAMESPACE_END   }
+#define COMMON_LIBRARY_NAMESPACE_START namespace COMMON_LIBRARY_NAMESPACE {
+#define COMMON_LIBRARY_NAMESPACE_END   }
 
 OUTER_NAMESPACE_START
-LIBRARY_NAMESPACE_START
+COMMON_LIBRARY_NAMESPACE_START
 
 using int8 = int8_t;
 using int16 = int16_t;
@@ -69,7 +69,7 @@ using Box3d = Box3<double>;
 using Box3i = Box3<int32>;
 using Box3I = Box3<int64>;
 
-LIBRARY_NAMESPACE_END
+COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
 
 #ifdef _WIN32
