@@ -324,5 +324,13 @@ constexpr INLINE bool Array<T>::isLocalBuffer() const {
 	return static_cast<const BufArray<T,1>*>(this)->isLocalBuffer();
 }
 
+// Array does not contain self-pointers, so can be realloc'd.
+template<typename T>
+struct is_trivially_relocatable<Array<T>> : public std::true_type {};
+
+// BufArray does contain self-pointers, so can't be realloc'd.
+template<typename T, size_t BUF_N>
+struct is_trivially_relocatable<BufArray<T,BUF_N>> : public std::false_type {};
+
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
