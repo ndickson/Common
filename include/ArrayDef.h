@@ -56,7 +56,7 @@ Array<T>::Array(Array<T>&& that) : data_(nullptr) {
 		// Copy construct, since ownership of the buffer can't be taken.
 		size_ = 0;
 		capacity_ = 0;
-		setCapacity(that.size_);
+		increaseCapacity(that.size_);
 		copyConstructSpan(data(), data()+that.size_, that.data());
 		size_ = that.size_;
 	}
@@ -81,7 +81,7 @@ Array<T>::Array(const Array<T>& that) : data_(nullptr), size_(0), capacity_(0) {
 		return;
 	}
 	// Only allocate up to size_
-	setCapacity(size_);
+	increaseCapacity(size_);
 	T* begin = data();
 	T* end = begin + size_;
 	const T* source = that.data();
@@ -135,7 +135,7 @@ template<typename T>
 Array<T>& Array<T>::operator=(const Array<T>& that) {
 	// Only set capacity if growing to more than current capacity.
 	if (that.size_ > capacity_) {
-		setCapacity(that.size_);
+		increaseCapacity(that.size_);
 	}
 	const bool isGrowing = (size_ < that.size_);
 	const size_t smallerSize = isGrowing ? size_ : that.size_;
@@ -187,6 +187,27 @@ void Array<T>::setCapacity(const size_t newCapacity) {
 }
 
 template<typename T>
+void Array<T>::increaseCapacity(const size_t newCapacity) {
+	if (isLocalBuffer()) {
+		// Don't free the local buffer; just realloc.
+		reallocLocalBuffer(newCapacity, false);
+	}
+	else {
+		data_.realloc(newCapacity);
+
+		capacity_ = newCapacity;
+
+		// If the heap happens to allocate a block that
+		// is immediately after this, allocate again,
+		// so that the isLocalBuffer() check can always be used
+		// to tell whether the block is a local buffer or not.
+		if (isLocalBuffer()) {
+			reallocLocalBuffer(capacity_, true);
+		}
+	}
+}
+
+template<typename T>
 INLINE void Array<T>::setSize(const size_t newSize) {
 	const size_t oldSize = size();
 	if (newSize == oldSize) {
@@ -195,7 +216,7 @@ INLINE void Array<T>::setSize(const size_t newSize) {
 	const size_t oldCapacity = capacity();
 	if (newSize > oldCapacity) {
 		const size_t coarse = coarseCapacity(oldCapacity);
-		setCapacity((newSize > coarse) ? newSize : coarse);
+		increaseCapacity((newSize > coarse) ? newSize : coarse);
 	}
 	if (!std::is_pod<T>::value) {
 		T*const oldEnd = data() + oldSize;
@@ -220,7 +241,7 @@ INLINE void Array<T>::append(const T& that, const size_t numCopies) {
 	const size_t oldCapacity = capacity();
 	if (newSize > oldCapacity) {
 		const size_t coarse = coarseCapacity(oldCapacity);
-		setCapacity((newSize > coarse) ? newSize : coarse);
+		increaseCapacity((newSize > coarse) ? newSize : coarse);
 	}
 	T*const oldEnd = data() + oldSize;
 	T*const newEnd = data() + newSize;
@@ -244,7 +265,7 @@ INLINE void Array<T>::append(T&& that) {
 	const size_t oldCapacity = capacity();
 	if (newSize > oldCapacity) {
 		const size_t coarse = coarseCapacity(oldCapacity);
-		setCapacity((newSize > coarse) ? newSize : coarse);
+		increaseCapacity((newSize > coarse) ? newSize : coarse);
 	}
 	T* p = data() + oldSize;
 	if constexpr (!std::is_pod<T>::value) {
@@ -261,6 +282,7 @@ void Array<T>::reallocLocalBuffer(size_t newCapacity, bool freeOldBlock) {
 	// There's currently a memory block in the address of a local buffer,
 	// so allocating another on the heap will yield a location that is in
 	// a different address.
+	// Any elements to be destructed must already have been destructed.
 	T* oldData = data_.release();
 	data_.realloc(newCapacity);
 	capacity_ = newCapacity;
