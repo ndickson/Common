@@ -100,7 +100,7 @@ Array<T>::Array(const Array<T>& that) : data_(nullptr), size_(0), capacity_(0) {
 template<typename T>
 Array<T>::~Array() {
 	if (!std::is_pod<T>::value && size_ > 0) {
-		destructSpan(data(), data()+size_);
+		destructSpan(begin(), end());
 	}
 	if (isLocalBuffer()) {
 		data_.release();
@@ -172,7 +172,17 @@ void Array<T>::setCapacity(const size_t newCapacity) {
 		reallocLocalBuffer(newCapacity, false);
 	}
 	else {
-		data_.realloc(newCapacity);
+		if (is_trivially_relocatable<T>::value || size_ == 0) {
+			data_.realloc(newCapacity);
+		}
+		else {
+			// realloc doesn't work for types T that contain pointers to within themselves,
+			// so we must allocate a new buffer and move-assign the data.
+			T* oldData = data_.release();
+			data_.realloc(newCapacity);
+			moveAssignSpan(begin(), end(), oldData);
+			free(oldData);
+		}
 
 		capacity_ = newCapacity;
 
@@ -193,7 +203,17 @@ void Array<T>::increaseCapacity(const size_t newCapacity) {
 		reallocLocalBuffer(newCapacity, false);
 	}
 	else {
-		data_.realloc(newCapacity);
+		if (is_trivially_relocatable<T>::value || size_ == 0) {
+			data_.realloc(newCapacity);
+		}
+		else {
+			// realloc doesn't work for types T that contain pointers to within themselves,
+			// so we must allocate a new buffer and move-assign the data.
+			T* oldData = data_.release();
+			data_.realloc(newCapacity);
+			moveAssignSpan(begin(), end(), oldData);
+			free(oldData);
+		}
 
 		capacity_ = newCapacity;
 
