@@ -3,6 +3,7 @@
 // This file declares common types and macros for use in other files.
 
 #include <stdint.h>
+#include <type_traits>
 
 #define OUTER_NAMESPACE             ndickson
 #define COMMON_LIBRARY_NAMESPACE    Common
@@ -68,6 +69,13 @@ using Box3f = Box3<float>;
 using Box3d = Box3<double>;
 using Box3i = Box3<int32>;
 using Box3I = Box3<int64>;
+
+// Specialize this for types that can be realloc'd, but cannot be memcpy'd.
+// It's primarily types that contain pointers to within their own direct memory
+// that can't be realloc'd, (e.g. BufArray), but not many types have this
+// property, and realloc can save having to separately move-assign data.
+template<typename T>
+struct is_trivially_relocatable : public std::is_trivially_copyable<T> {};
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
