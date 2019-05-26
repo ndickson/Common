@@ -189,6 +189,10 @@ public:
 	// so this function is also in ArrayDef.h
 	void setCapacity(const size_t newCapacity);
 
+	// This is the same as setCapacity, but requires that newCapacity > capacity(),
+	// so that checks for destruction can be avoided.
+	void increaseCapacity(const size_t newCapacity);
+
 	[[nodiscard]] constexpr static INLINE size_t coarseCapacity(const size_t oldCapacity) {
 		// Always increase by at least floor(1.5*oldCapacity) + 1, e.g.:
 		// 0, 1, 2, 4, 7, 11, 17, 26, 40, 61, 92, 139, 209, 314, ...
