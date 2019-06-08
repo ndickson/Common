@@ -12,68 +12,68 @@ OUTER_NAMESPACE_START
 COMMON_LIBRARY_NAMESPACE_START
 
 // These are default implementations that do nothing for float, double, or integer types.
-constexpr INLINE const float& conjugate(const float& v) {
+[[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
 	return v;
 }
-constexpr INLINE const double& conjugate(const double& v) {
+[[nodiscard]] constexpr INLINE const double& conjugate(const double& v) {
 	return v;
 }
-constexpr INLINE const int8& conjugate(const int8& v) {
+[[nodiscard]] constexpr INLINE const int8& conjugate(const int8& v) {
 	return v;
 }
-constexpr INLINE const int16& conjugate(const int16& v) {
+[[nodiscard]] constexpr INLINE const int16& conjugate(const int16& v) {
 	return v;
 }
-constexpr INLINE const int32& conjugate(const int32& v) {
+[[nodiscard]] constexpr INLINE const int32& conjugate(const int32& v) {
 	return v;
 }
-constexpr INLINE const int64& conjugate(const int64& v) {
+[[nodiscard]] constexpr INLINE const int64& conjugate(const int64& v) {
 	return v;
 }
-constexpr INLINE const uint8& conjugate(const uint8& v) {
+[[nodiscard]] constexpr INLINE const uint8& conjugate(const uint8& v) {
 	return v;
 }
-constexpr INLINE const uint16& conjugate(const uint16& v) {
+[[nodiscard]] constexpr INLINE const uint16& conjugate(const uint16& v) {
 	return v;
 }
-constexpr INLINE const uint32& conjugate(const uint32& v) {
+[[nodiscard]] constexpr INLINE const uint32& conjugate(const uint32& v) {
 	return v;
 }
-constexpr INLINE const uint64& conjugate(const uint64& v) {
+[[nodiscard]] constexpr INLINE const uint64& conjugate(const uint64& v) {
 	return v;
 }
 
-constexpr INLINE float magnitude2(const float& v) {
+[[nodiscard]] constexpr INLINE float magnitude2(const float& v) {
 	return v*v;
 }
-constexpr INLINE double magnitude2(const double& v) {
+[[nodiscard]] constexpr INLINE double magnitude2(const double& v) {
 	return v*v;
 }
-constexpr INLINE int16 magnitude2(const int8& v) {
+[[nodiscard]] constexpr INLINE int16 magnitude2(const int8& v) {
 	return int16(v)*v;
 }
-constexpr INLINE int32 magnitude2(const int16& v) {
+[[nodiscard]] constexpr INLINE int32 magnitude2(const int16& v) {
 	return int32(v)*v;
 }
-constexpr INLINE int64 magnitude2(const int32& v) {
+[[nodiscard]] constexpr INLINE int64 magnitude2(const int32& v) {
 	return int64(v)*v;
 }
-constexpr INLINE uint64 magnitude2(const int64& v) {
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const int64& v) {
 	// No 128-bit integer type to avoid overflow, but we can extend the range
 	// slightly with uint64.
 	uint64 vp = (v < 0) ? uint64(-v) : uint64(v);
 	return vp*vp;
 }
-constexpr INLINE uint16 magnitude2(const uint8& v) {
+[[nodiscard]] constexpr INLINE uint16 magnitude2(const uint8& v) {
 	return uint16(v)*v;
 }
-constexpr INLINE uint32 magnitude2(const uint16& v) {
+[[nodiscard]] constexpr INLINE uint32 magnitude2(const uint16& v) {
 	return uint32(v)*v;
 }
-constexpr INLINE uint64 magnitude2(const uint32& v) {
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint32& v) {
 	return uint64(v)*v;
 }
-constexpr INLINE uint64 magnitude2(const uint64& v) {
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint64& v) {
 	// No 128-bit integer type to avoid overflow.
 	return v*v;
 }
@@ -87,10 +87,10 @@ constexpr INLINE uint64 magnitude2(const uint64& v) {
 template<typename SUBCLASS,typename T,size_t N>
 struct BaseVec {
 protected:
-	constexpr INLINE SUBCLASS& subclass() {
+	[[nodiscard]] constexpr INLINE SUBCLASS& subclass() {
 		return static_cast<SUBCLASS&>(*this);
 	}
-	constexpr INLINE const SUBCLASS& subclass() const {
+	[[nodiscard]] constexpr INLINE const SUBCLASS& subclass() const {
 		return static_cast<const SUBCLASS&>(*this);
 	}
 public:
@@ -100,18 +100,24 @@ public:
 	static constexpr size_t TupleSize = N;
 
 protected:
-	constexpr INLINE T& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
 		return subclass()[i];
 	}
-	constexpr INLINE const T& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
 		return subclass()[i];
 	}
+
 	template<typename THAT_SUBCLASS,typename S,size_t M>
 	friend struct BaseVec;
+
+	template<typename S>
+	struct BaseTypeConvert {
+		using Type = typename SUBCLASS::template TypeConvert<S>::Type;
+	};
 public:
 
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator==(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator==(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		bool equal = true;
 		for (size_t i = 0; i < N; ++i) {
 			// This could use branches to early-exit instead, but for small vectors,
@@ -122,7 +128,7 @@ public:
 		return equal;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator!=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator!=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		return !(*this == that);
 	}
 
@@ -130,7 +136,7 @@ public:
 	// They treat the first component as the most significant.
 	// They should always return false if the first unequal component is NaN.
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator<(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator<(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		for (size_t i = 0; i < N; ++i) {
 			if (subclass()[i] != that[i]) {
 				return (subclass()[i] < that[i]);
@@ -139,7 +145,7 @@ public:
 		return false;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator<=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator<=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		for (size_t i = 0; i < N; ++i) {
 			if (subclass()[i] != that[i]) {
 				return (subclass()[i] < that[i]);
@@ -148,7 +154,7 @@ public:
 		return true;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator>(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator>(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		for (size_t i = 0; i < N; ++i) {
 			if (subclass()[i] != that[i]) {
 				return (subclass()[i] > that[i]);
@@ -157,7 +163,7 @@ public:
 		return false;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE bool operator>=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE bool operator>=(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		for (size_t i = 0; i < N; ++i) {
 			if (subclass()[i] != that[i]) {
 				return (subclass()[i] > that[i]);
@@ -165,13 +171,13 @@ public:
 		}
 		return true;
 	}
-	
+
 	// The type handling on these non-assignment operators ensures that
 	// precision handling is the same as if scalars were being added.
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE Vec<decltype(T()+S()),N> operator+(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()+S())>::Type operator+(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		using TS = decltype(T()+S());
-		using OutVec = Vec<TS,N>;
+		using OutVec = typename BaseTypeConvert<TS>::Type;
 		// Hopefully the compiler is smart enough to avoid the redundant
 		// zero-initialization; it's unfortunately necessary for this function
 		// to be constexpr, in the case where TS can't be initialized from T.
@@ -182,9 +188,9 @@ public:
 		return out;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE Vec<decltype(T()-S()),N> operator-(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()-S())>::Type operator-(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		using TS = decltype(T()-S());
-		using OutVec = Vec<TS,N>;
+		using OutVec = typename BaseTypeConvert<TS>::Type;
 		// Hopefully the compiler is smart enough to avoid the redundant
 		// zero-initialization; it's unfortunately necessary for this function
 		// to be constexpr, in the case where TS can't be initialized from T.
@@ -200,19 +206,19 @@ public:
 		}
 	}
 	// Unary plus operator (returns this unchanged)
-	constexpr INLINE SUBCLASS operator+() const {
+	[[nodiscard]] constexpr INLINE SUBCLASS operator+() const {
 		return subclass();
 	}
 	// Unary minus operator
-	constexpr INLINE SUBCLASS operator-() const {
-		SUBCLASS out(*this);
+	[[nodiscard]] constexpr INLINE SUBCLASS operator-() const {
+		SUBCLASS out(subclass());
 		out.negate();
 		return out;
 	}
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE Vec<decltype(T()*S()),N> operator*(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()*S())>::Type operator*(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
 		using TS = decltype(T()*S());
-		using OutVec = Vec<TS,N>;
+		using OutVec = typename BaseTypeConvert<TS>::Type;
 		// Hopefully the compiler is smart enough to avoid the redundant
 		// zero-initialization; it's unfortunately necessary for this function
 		// to be constexpr, in the case where TS can't be initialized from T.
@@ -223,9 +229,9 @@ public:
 		return out;
 	}
 	template<typename S>
-	constexpr INLINE Vec<decltype(T()*S()),N> operator*(S that) const {
+	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()*S())>::Type operator*(S that) const {
 		using TS = decltype(T()*S());
-		using OutVec = Vec<TS,N>;
+		using OutVec = typename BaseTypeConvert<TS>::Type;
 		// Hopefully the compiler is smart enough to avoid the redundant
 		// zero-initialization; it's unfortunately necessary for this function
 		// to be constexpr, in the case where TS can't be initialized from T.
@@ -265,7 +271,7 @@ struct NormVec : public BaseVec<SUBCLASS,T,N> {
 	using BaseType = BaseVec<SUBCLASS,T,N>;
 
 	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE decltype(conjugate(T())*S()) dot(const NormVec<THAT_SUBCLASS,S,N>& that) const {
+	[[nodiscard]] constexpr INLINE decltype(conjugate(T())*S()) dot(const NormVec<THAT_SUBCLASS,S,N>& that) const {
 		using TS = decltype(conjugate(T())*S());
 		TS sum(0);
 		for (size_t i = 0; i < N; ++i) {
@@ -275,7 +281,7 @@ struct NormVec : public BaseVec<SUBCLASS,T,N> {
 		return sum;
 	}
 
-	constexpr INLINE decltype(magnitude2(T())) length2() const {
+	[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) length2() const {
 		using T2 = decltype(magnitude2(T()));
 		T2 sum(0);
 		for (size_t i = 0; i < N; ++i) {
@@ -284,7 +290,7 @@ struct NormVec : public BaseVec<SUBCLASS,T,N> {
 		}
 		return sum;
 	}
-	INLINE auto length() const {
+	[[nodiscard]] INLINE auto length() const {
 		return sqrt(length2());
 	}
 	INLINE T makeUnit() {
@@ -360,7 +366,7 @@ struct Vec : NormVec<Vec<T,N>,T,N> {
 		return *this;
 	}
 
-	constexpr INLINE T& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -368,14 +374,14 @@ struct Vec : NormVec<Vec<T,N>,T,N> {
 
 		return v[i];
 	}
-	constexpr INLINE const T& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
 		return v[i];
 	}
 
-	constexpr INLINE T* data() {
+	[[nodiscard]] constexpr INLINE T* data() {
 		return v;
 	}
-	constexpr INLINE const T* data() const {
+	[[nodiscard]] constexpr INLINE const T* data() const {
 		return v;
 	}
 
@@ -384,6 +390,11 @@ struct Vec : NormVec<Vec<T,N>,T,N> {
 		*this = that;
 		that = other;
 	}
+
+	template<typename S>
+	struct TypeConvert {
+		using Type = Vec<S,N>;
+	};
 };
 
 
@@ -436,7 +447,7 @@ public:
 		return *this;
 	}
 
-	constexpr INLINE T& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -444,14 +455,14 @@ public:
 
 		return v[i];
 	}
-	constexpr INLINE const T& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
 		return v[i];
 	}
 
-	constexpr INLINE T* data() {
+	[[nodiscard]] constexpr INLINE T* data() {
 		return v;
 	}
-	constexpr INLINE const T* data() const {
+	[[nodiscard]] constexpr INLINE const T* data() const {
 		return v;
 	}
 
@@ -461,14 +472,19 @@ public:
 		that = other;
 	}
 
-	constexpr INLINE decltype(T()*T()) cross(const ThisType& that) const {
+	[[nodiscard]] constexpr INLINE decltype(T()*T()) cross(const ThisType& that) const {
 		return v[0]*that[1] - v[1]*that[0];
 	}
 
 	// Returns the vector that's rotated a positive quarter turn.
-	constexpr INLINE ThisType perpendicular() const {
+	[[nodiscard]] constexpr INLINE ThisType perpendicular() const {
 		return ThisType(-v[1], v[0]);
 	}
+
+	template<typename S>
+	struct TypeConvert {
+		using Type = Vec<S,N>;
+	};
 };
 
 
@@ -521,7 +537,7 @@ public:
 		return *this;
 	}
 
-	constexpr INLINE T& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -529,14 +545,14 @@ public:
 
 		return v[i];
 	}
-	constexpr INLINE const T& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
 		return v[i];
 	}
 
-	constexpr INLINE T* data() {
+	[[nodiscard]] constexpr INLINE T* data() {
 		return v;
 	}
-	constexpr INLINE const T* data() const {
+	[[nodiscard]] constexpr INLINE const T* data() const {
 		return v;
 	}
 
@@ -546,18 +562,23 @@ public:
 		that = other;
 	}
 
-	constexpr INLINE Vec<decltype(T()*T()),N> cross(const ThisType& that) const {
+	[[nodiscard]] constexpr INLINE Vec<decltype(T()*T()),N> cross(const ThisType& that) const {
 		return Vec<decltype(T()*T()),N>(
 			v[1]*that[2] - v[2]*that[1],
 			v[2]*that[0] - v[0]*that[2],
 			v[0]*that[1] - v[1]*that[0]
 		);
 	}
+
+	template<typename S>
+	struct TypeConvert {
+		using Type = Vec<S,N>;
+	};
 };
 
 
 template<typename S,typename T,size_t N>
-constexpr INLINE Vec<decltype(S()*T()),N> operator*(S scalar, const Vec<T,N>& vector) {
+[[nodiscard]] constexpr INLINE Vec<decltype(S()*T()),N> operator*(S scalar, const Vec<T,N>& vector) {
 	using ST = decltype(S()*T());
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
 	Vec<ST,N> out(ST(0));
@@ -568,7 +589,7 @@ constexpr INLINE Vec<decltype(S()*T()),N> operator*(S scalar, const Vec<T,N>& ve
 }
 
 template<typename T,size_t N>
-constexpr INLINE Vec<decltype(conjugate(T())),N> conjugate(const Vec<T,N>& v) {
+[[nodiscard]] constexpr INLINE Vec<decltype(conjugate(T())),N> conjugate(const Vec<T,N>& v) {
 	using CT = decltype(conjugate(T()));
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
 	Vec<CT,N> out(CT(0));
@@ -579,7 +600,7 @@ constexpr INLINE Vec<decltype(conjugate(T())),N> conjugate(const Vec<T,N>& v) {
 }
 
 template<typename T,size_t N>
-constexpr INLINE decltype(magnitude2(T())) magnitude2(const Vec<T,N>& v) {
+[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) magnitude2(const Vec<T,N>& v) {
 	return v.length2();
 }
 
