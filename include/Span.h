@@ -29,6 +29,10 @@ struct Span : public BaseVec<Span<T>,T,2> {
 
 	constexpr INLINE Span(const T& min, const T& max) : v{min, max} {}
 
+	// Creates a Span representing a single value.
+	// For integer or pointer types, max will be one increment more than min, for range [min,max).
+	constexpr INLINE Span(const T& value) : v{value, value + (decltype(T()-T()))(std::is_integral<T>::value || std::is_pointer<T>::value)} {}
+
 	template<typename S>
 	explicit constexpr INLINE Span(const Span<S>& that) : v{T(that.min()), T(that.max())} {}
 
@@ -42,7 +46,7 @@ struct Span : public BaseVec<Span<T>,T,2> {
 	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
 	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
 
-	constexpr INLINE T& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -50,14 +54,14 @@ struct Span : public BaseVec<Span<T>,T,2> {
 
 		return v[i];
 	}
-	constexpr INLINE const T& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
 		return v[i];
 	}
 
-	constexpr INLINE T* data() {
+	[[nodiscard]] constexpr INLINE T* data() {
 		return v;
 	}
-	constexpr INLINE const T* data() const {
+	[[nodiscard]] constexpr INLINE const T* data() const {
 		return v;
 	}
 	constexpr INLINE void makeEmpty() {
@@ -69,28 +73,28 @@ struct Span : public BaseVec<Span<T>,T,2> {
 
 	// An integer span is empty if max <= min, since it's inclusive-exclusive.
 	// A floating-point span is empty if max < min, since it's inclusive-inclusive.
-	constexpr INLINE bool isEmpty() const {
+	[[nodiscard]] constexpr INLINE bool isEmpty() const {
 		if (std::is_integral<T>::value)
 			return max() <= min();
 		return max() < min();
 	}
 
-	constexpr INLINE T& min() {
+	[[nodiscard]] constexpr INLINE T& min() {
 		return v[0];
 	}
-	constexpr INLINE const T& min() const {
+	[[nodiscard]] constexpr INLINE const T& min() const {
 		return v[0];
 	}
 	// NOTE: For integer types, this is one more than the maximum value.
-	constexpr INLINE T& max() {
+	[[nodiscard]] constexpr INLINE T& max() {
 		return v[1];
 	}
 	// NOTE: For integer types, this is one more than the maximum value.
-	constexpr INLINE const T& max() const {
+	[[nodiscard]] constexpr INLINE const T& max() const {
 		return v[1];
 	}
 
-	constexpr INLINE T centre() const {
+	[[nodiscard]] constexpr INLINE T centre() const {
 		if constexpr (std::is_pointer<T>::value || (std::is_integral<T>::value && std::is_unsigned<T>::value)) {
 			// size() always fits in the integer type if unsigned.
 			// min()+max() might overflow, so use size() instead.
@@ -108,7 +112,7 @@ struct Span : public BaseVec<Span<T>,T,2> {
 			return T(0.5)*(min()+max());
 		}
 	}
-	constexpr INLINE auto size() const {
+	[[nodiscard]] constexpr INLINE auto size() const {
 		return max()-min();
 	}
 
@@ -147,6 +151,11 @@ struct Span : public BaseVec<Span<T>,T,2> {
 			max() = value;
 		}
 	}
+
+	template<typename S>
+	struct TypeConvert {
+		using Type = Span<S>;
+	};
 };
 
 COMMON_LIBRARY_NAMESPACE_END
