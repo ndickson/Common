@@ -44,6 +44,10 @@ using Vec3i = Vec3<int32>;
 using Vec3I = Vec3<int64>;
 
 
+template<typename T,size_t NROWS,size_t NCOLS=NROWS,bool ROW_MAJOR=true>
+struct Mat;
+
+
 template<typename T>
 struct Span;
 
@@ -69,6 +73,19 @@ using Box3f = Box3<float>;
 using Box3d = Box3<double>;
 using Box3i = Box3<int32>;
 using Box3I = Box3<int64>;
+
+template<typename T>
+class ArrayPtr;
+
+template<typename T>
+class Array;
+template<typename T, size_t BUF_N>
+class BufArray;
+
+template<typename T>
+class Queue;
+template<typename T, size_t BUF_N>
+class BufQueue;
 
 // Specialize this for types that can be realloc'd, but cannot be memcpy'd.
 // It's primarily types that contain pointers to within their own direct memory
