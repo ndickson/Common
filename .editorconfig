@@ -1,0 +1,7 @@
+# root editor config file
+root = true
+
+# 4-space tabs
+[*.{h,cpp,md,txt,asm,inc,json,xml,html,css,js,py}]
+indent_style = tab
+indent_size = 4
