@@ -1,12 +1,18 @@
 #pragma once
 
 #include "Types.h"
+#include "Vec.h"
 #include <stdint.h>
 
 OUTER_NAMESPACE_START
 COMMON_LIBRARY_NAMESPACE_START
 
-constexpr INLINE uint64 rotateLeft(const uint64 x, const int bits) {
+[[nodiscard]] constexpr INLINE uint64 rotateLeft(const uint64 x, const int bits) {
+	// Hopefully the compiler realizes that there's a single x86-64 instruction for this.
+	return (x << bits) | (x >> (64-bits));
+}
+template<size_t N>
+[[nodiscard]] constexpr INLINE Vec<uint64,N> rotateLeft(const Vec<uint64,N>& x, const int bits) {
 	// Hopefully the compiler realizes that there's a single x86-64 instruction for this.
 	return (x << bits) | (x >> (64-bits));
 }
@@ -29,12 +35,13 @@ constexpr INLINE uint64 splitMix64(uint64& state) {
 struct Random128 {
 	uint64 state[2];
 
-	INLINE Random128() {}
+	INLINE Random128() = default;
 	constexpr INLINE Random128(const Random128& that) = default;
 	constexpr INLINE Random128(Random128&& that) = default;
 
 	// Initialize from a single seed.
 	constexpr INLINE Random128(uint64 seed) : state{0,0} {
+		static_assert(std::is_pod<Random128>::value);
 		reseed(seed);
 	}
 
@@ -115,17 +122,112 @@ struct Random128 {
 	}
 };
 
+// This interleaves two Random128 random number generators, in the hopes that
+// the compiler will be able to figure out that it can vectorize the
+// operations to get much better performance per random bit generated.
+struct Random128V {
+	Vec2<uint64> state[2];
+
+	INLINE Random128V() = default;
+	constexpr INLINE Random128V(const Random128V& that) = default;
+	constexpr INLINE Random128V(Random128V&& that) = default;
+
+	// Initialize from a single seed.
+	constexpr INLINE Random128V(uint64 seed) : state{Vec2<uint64>(0),Vec2<uint64>(0)} {
+		static_assert(std::is_pod<Random128V>::value);
+		reseed(seed);
+	}
+
+	// This reseeds in a way that should be consistent with the constructor.
+	constexpr void reseed(uint64 seed) {
+		Random128 single(seed);
+		state[0][0] = single.state[0];
+		state[1][0] = single.state[1];
+		// Move the other generator forward by 2^64 steps.
+		single.jump();
+		state[0][1] = single.state[0];
+		state[1][1] = single.state[1];
+	}
+
+	constexpr INLINE Random128V& operator=(const Random128V& that) = default;
+	constexpr INLINE Random128V& operator=(Random128V&& that) = default;
+
+	constexpr INLINE Vec2<uint64> next() {
+		const Vec2<uint64> s0 = state[0];
+		Vec2<uint64> s1 = state[1];
+		const Vec2<uint64> result = s0 + s1;
+
+		s1 ^= s0;
+		state[0] = rotateLeft(s0, 24) ^ s1 ^ (s1 << 16);
+		state[1] = rotateLeft(s1, 37);
+
+		return result;
+	}
+
+	// This is the jump function for the generator. It is equivalent
+	// to 2^64 calls to next(); it can be used to generate 2^64
+	// non-overlapping subsequences for parallel computations.
+	constexpr void jump() {
+		constexpr int JUMP_LENGTH = 2;
+		constexpr uint64 JUMP[JUMP_LENGTH] = {
+			0xdf900294d8f554a5,
+			0x170865df4b3201fc
+		};
+
+		Vec2<uint64> s0(0);
+		Vec2<uint64> s1(0);
+		for (int i = 0; i < JUMP_LENGTH; ++i) {
+			for (int bit = 0; bit < 64; ++bit) {
+				if (JUMP[i] & (UINT64_C(1) << bit)) {
+					s0 ^= state[0];
+					s1 ^= state[1];
+				}
+				next();
+			}
+		}
+		state[0] = s0;
+		state[1] = s1;
+	}
+
+	// This is the long-jump function for the generator. It is equivalent to
+	// 2^96 calls to next(); it can be used to generate 2^32 starting points,
+	// from each of which jump() will generate 2^32 non-overlapping
+	// subsequences for parallel distributed computations.
+	constexpr void longJump() {
+		constexpr int JUMP_LENGTH = 2;
+		constexpr uint64 JUMP[JUMP_LENGTH] = {
+			0xd2a98b26625eee7b,
+			0xdddf9b1090aa7ac1
+		};
+
+		Vec2<uint64> s0(0);
+		Vec2<uint64> s1(0);
+		for (int i = 0; i < JUMP_LENGTH; ++i) {
+			for (int bit = 0; bit < 64; ++bit) {
+				if (JUMP[i] & (UINT64_C(1) << bit)) {
+					s0 ^= state[0];
+					s1 ^= state[1];
+				}
+				next();
+			}
+		}
+		state[0] = s0;
+		state[1] = s1;
+	}
+};
+
 // This is based on the 2018 xoshiro256** 1.0 random number generator
 // from xoshiro.di.unimi.it, which has been released into the public domain.
 struct Random256 {
 	uint64 state[4];
 
-	INLINE Random256() {}
+	INLINE Random256() = default;
 	constexpr INLINE Random256(const Random256& that) = default;
 	constexpr INLINE Random256(Random256&& that) = default;
 
 	// Initialize from a single seed.
 	constexpr INLINE Random256(uint64 seed) : state{0,0,0,0} {
+		static_assert(std::is_pod<Random256>::value);
 		reseed(seed);
 	}
 
@@ -247,7 +349,22 @@ constexpr INLINE void random(RNG& rng, uint64& result) {
 template<typename RNG>
 constexpr INLINE void random(RNG& rng, uint32& result) {
 	uint64 i = rng.next();
-	result = uint32(i);
+	// The website with the random number generators above
+	// recommended using higher bits, since the lower bits have
+	// a very slight correlation over very long spans.
+	result = uint32(i>>32);
+}
+template<typename RNG>
+constexpr INLINE void random(RNG& rng, int64& result) {
+	result = int64(rng.next());
+}
+template<typename RNG>
+constexpr INLINE void random(RNG& rng, int32& result) {
+	uint64 i = rng.next();
+	// The website with the random number generators above
+	// recommended using higher bits, since the lower bits have
+	// a very slight correlation over very long spans.
+	result = int32(i>>32);
 }
 
 COMMON_LIBRARY_NAMESPACE_END
