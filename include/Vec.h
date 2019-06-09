@@ -266,6 +266,8 @@ public:
 	}
 };
 
+// Intermediate-level class for floating-point (or related) vector types,
+// or at least for vector types that have a Euclidean norm.
 template<typename SUBCLASS,typename T,size_t N>
 struct NormVec : public BaseVec<SUBCLASS,T,N> {
 	using BaseType = BaseVec<SUBCLASS,T,N>;
@@ -317,9 +319,235 @@ struct NormVec : public BaseVec<SUBCLASS,T,N> {
 	}
 };
 
+// Intermediate-level class for integer vector types, with various
+// integer-specific operators, and no length(), makeUnit(), or makeLength().
+template<typename SUBCLASS,typename T,size_t N>
+struct IntVec : public BaseVec<SUBCLASS,T,N> {
+	using BaseType = BaseVec<SUBCLASS,T,N>;
+
+	// Dot product
+	template<typename THAT_SUBCLASS,typename S>
+	[[nodiscard]] constexpr INLINE decltype(T()*S()) dot(const IntVec<THAT_SUBCLASS,S,N>& that) const {
+		using TS = decltype(T()*S());
+		TS sum(0);
+		for (size_t i = 0; i < N; ++i) {
+			TS product = BaseType::subclass()[i]*that[i];
+			sum += product;
+		}
+		return sum;
+	}
+
+	// Euclidean length squared
+	[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) length2() const {
+		using T2 = decltype(magnitude2(T()));
+		T2 sum(0);
+		for (size_t i = 0; i < N; ++i) {
+			T2 square = magnitude2(BaseType::subclass()[i]);
+			sum += square;
+		}
+		return sum;
+	}
+
+	// Bitwise NOT operator
+	[[nodiscard]] constexpr INLINE SUBCLASS operator~() const {
+		SUBCLASS out(T(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = ~(BaseType::subclass()[i]);
+		}
+		return out;
+	}
+
+	// Vec & Vec
+	[[nodiscard]] constexpr INLINE SUBCLASS operator&(const SUBCLASS& that) const {
+		SUBCLASS out(T(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] & that[i];
+		}
+		return out;
+	}
+	// Vec & scalar
+	template<typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()&S())>::Type operator&(S that) const {
+		using TS = decltype(T()&S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] & that;
+		}
+		return out;
+	}
+	// Vec & Vec
+	template<typename THAT_SUBCLASS,typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()&S())>::Type operator&(const IntVec<THAT_SUBCLASS,S,N>& that) const {
+		using TS = decltype(T()&S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] & that[i];
+		}
+		return out;
+	}
+	// Vec &= Vec
+	constexpr INLINE void operator&=(const SUBCLASS& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] &= that[i];
+		}
+	}
+	// Vec &= scalar
+	template<typename S>
+	constexpr INLINE void operator&=(S that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] &= that;
+		}
+	}
+	// Vec &= Vec
+	template<typename THAT_SUBCLASS,typename S>
+	constexpr INLINE void operator&=(const IntVec<THAT_SUBCLASS,S,N>& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] &= that[i];
+		}
+	}
+	// Vec ^ Vec
+	[[nodiscard]] constexpr INLINE SUBCLASS operator^(const SUBCLASS& that) const {
+		SUBCLASS out(T(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] ^ that[i];
+		}
+		return out;
+	}
+	// Vec ^ scalar
+	template<typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()^S())>::Type operator^(S that) const {
+		using TS = decltype(T()^S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] ^ that;
+		}
+		return out;
+	}
+	// Vec ^ Vec
+	template<typename THAT_SUBCLASS,typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()^S())>::Type operator^(const IntVec<THAT_SUBCLASS,S,N>& that) const {
+		using TS = decltype(T()^S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] ^ that[i];
+		}
+		return out;
+	}
+	// Vec ^= Vec
+	constexpr INLINE void operator^=(const SUBCLASS& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] ^= that[i];
+		}
+	}
+	// Vec ^= scalar
+	template<typename S>
+	constexpr INLINE void operator^=(S that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] ^= that;
+		}
+	}
+	// Vec ^= Vec
+	template<typename THAT_SUBCLASS,typename S>
+	constexpr INLINE void operator^=(const IntVec<THAT_SUBCLASS,S,N>& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] ^= that[i];
+		}
+	}
+	// Vec | Vec
+	[[nodiscard]] constexpr INLINE SUBCLASS operator|(const SUBCLASS& that) const {
+		SUBCLASS out(T(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] | that[i];
+		}
+		return out;
+	}
+	// Vec | scalar
+	template<typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()|S())>::Type operator|(S that) const {
+		using TS = decltype(T()|S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] | that;
+		}
+		return out;
+	}
+	// Vec | Vec
+	template<typename THAT_SUBCLASS,typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()|S())>::Type operator|(const IntVec<THAT_SUBCLASS,S,N>& that) const {
+		using TS = decltype(T()|S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] | that[i];
+		}
+		return out;
+	}
+	// Vec |= Vec
+	constexpr INLINE void operator|=(const SUBCLASS& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] |= that[i];
+		}
+	}
+	// Vec |= scalar
+	template<typename S>
+	constexpr INLINE void operator|=(S that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] |= that;
+		}
+	}
+	// Vec |= Vec
+	template<typename THAT_SUBCLASS,typename S>
+	constexpr INLINE void operator|=(const IntVec<THAT_SUBCLASS,S,N>& that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] |= that[i];
+		}
+	}
+	// Vec << scalar
+	template<typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()<<S())>::Type operator<<(S that) const {
+		using TS = decltype(T()<<S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] << that;
+		}
+		return out;
+	}
+	// Vec <<= scalar
+	template<typename S>
+	constexpr INLINE void operator<<=(S that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] <<= that;
+		}
+	}
+	// Vec >> scalar
+	template<typename S>
+	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()>>S())>::Type operator>>(S that) const {
+		using TS = decltype(T()>>S());
+		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
+		OutVec out(TS(0));
+		for (size_t i = 0; i < N; ++i) {
+			out[i] = BaseType::subclass()[i] >> that;
+		}
+		return out;
+	}
+	// Vec >>= scalar
+	template<typename S>
+	constexpr INLINE void operator>>=(S that) {
+		for (size_t i = 0; i < N; ++i) {
+			BaseType::subclass()[i] >>= that;
+		}
+	}
+};
+
 // Generic, fixed-dimension vector class
 template<typename T,size_t N>
-struct Vec : NormVec<Vec<T,N>,T,N> {
+struct Vec : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,N>,T,N>>::type {
 	T v[N];
 
 	using ThisType = Vec<T,N>;
@@ -401,7 +629,7 @@ struct Vec : NormVec<Vec<T,N>,T,N> {
 // Specialize Vec for N=2, so that initialization constructors can be constexpr,
 // and to add cross, perpendicular, and any other additional functions.
 template<typename T>
-struct Vec<T,2> : NormVec<Vec<T,2>,T,2> {
+struct Vec<T,2> : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,2>,T,2>>::type {
 	T v[2];
 
 private:
@@ -491,7 +719,7 @@ public:
 // Specialize Vec for N=3, so that initialization constructors can be constexpr,
 // and to add cross and any other additional functions.
 template<typename T>
-struct Vec<T,3> : NormVec<Vec<T,3>,T,3> {
+struct Vec<T,3> : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,3>,T,3>>::type {
 	T v[3];
 
 private:
