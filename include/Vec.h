@@ -172,96 +172,30 @@ public:
 		return true;
 	}
 
-	// The type handling on these non-assignment operators ensures that
-	// precision handling is the same as if scalars were being added.
 	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()+S())>::Type operator+(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()+S());
-		using OutVec = typename BaseTypeConvert<TS>::Type;
-		// Hopefully the compiler is smart enough to avoid the redundant
-		// zero-initialization; it's unfortunately necessary for this function
-		// to be constexpr, in the case where TS can't be initialized from T.
-		OutVec out(TS(0));
+	[[nodiscard]] constexpr INLINE decltype(conjugate(T())*S()) dot(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
+		using TS = decltype(conjugate(T())*S());
+		TS sum(0);
 		for (size_t i = 0; i < N; ++i) {
-			out[i] = subclass()[i] + that[i];
+			TS product = conjugate(subclass()[i])*that[i];
+			sum += product;
 		}
-		return out;
+		return sum;
 	}
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()-S())>::Type operator-(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()-S());
-		using OutVec = typename BaseTypeConvert<TS>::Type;
-		// Hopefully the compiler is smart enough to avoid the redundant
-		// zero-initialization; it's unfortunately necessary for this function
-		// to be constexpr, in the case where TS can't be initialized from T.
-		OutVec out(TS(0));
+
+	[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) length2() const {
+		using T2 = decltype(magnitude2(T()));
+		T2 sum(0);
 		for (size_t i = 0; i < N; ++i) {
-			out[i] = subclass()[i] - that[i];
+			const T2 square = magnitude2(subclass()[i]);
+			sum += square;
 		}
-		return out;
+		return sum;
 	}
+
 	constexpr INLINE void negate() {
 		for (size_t i = 0; i < N; ++i) {
 			subclass()[i] = -subclass()[i];
-		}
-	}
-	// Unary plus operator (returns this unchanged)
-	[[nodiscard]] constexpr INLINE SUBCLASS operator+() const {
-		return subclass();
-	}
-	// Unary minus operator
-	[[nodiscard]] constexpr INLINE SUBCLASS operator-() const {
-		SUBCLASS out(subclass());
-		out.negate();
-		return out;
-	}
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()*S())>::Type operator*(const BaseVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()*S());
-		using OutVec = typename BaseTypeConvert<TS>::Type;
-		// Hopefully the compiler is smart enough to avoid the redundant
-		// zero-initialization; it's unfortunately necessary for this function
-		// to be constexpr, in the case where TS can't be initialized from T.
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = subclass()[i] * that[i];
-		}
-		return out;
-	}
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseTypeConvert<decltype(T()*S())>::Type operator*(S that) const {
-		using TS = decltype(T()*S());
-		using OutVec = typename BaseTypeConvert<TS>::Type;
-		// Hopefully the compiler is smart enough to avoid the redundant
-		// zero-initialization; it's unfortunately necessary for this function
-		// to be constexpr, in the case where TS can't be initialized from T.
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = subclass()[i] * that;
-		}
-		return out;
-	}
-
-	constexpr INLINE void operator+=(const BaseType& that) {
-		for (size_t i = 0; i < N; ++i) {
-			subclass()[i] += that[i];
-		}
-	}
-	constexpr INLINE void operator-=(const BaseType& that) {
-		for (size_t i = 0; i < N; ++i) {
-			subclass()[i] -= that[i];
-		}
-	}
-	template<typename S>
-	constexpr INLINE void operator*=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			subclass()[i] *= that;
-		}
-	}
-	template<typename S>
-	constexpr INLINE void operator/=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			subclass()[i] /= that;
 		}
 	}
 };
@@ -272,282 +206,18 @@ template<typename SUBCLASS,typename T,size_t N>
 struct NormVec : public BaseVec<SUBCLASS,T,N> {
 	using BaseType = BaseVec<SUBCLASS,T,N>;
 
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE decltype(conjugate(T())*S()) dot(const NormVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(conjugate(T())*S());
-		TS sum(0);
-		for (size_t i = 0; i < N; ++i) {
-			TS product = conjugate(BaseType::subclass()[i])*that[i];
-			sum += product;
-		}
-		return sum;
-	}
-
-	[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) length2() const {
-		using T2 = decltype(magnitude2(T()));
-		T2 sum(0);
-		for (size_t i = 0; i < N; ++i) {
-			T2 square = magnitude2(BaseType::subclass()[i]);
-			sum += square;
-		}
-		return sum;
-	}
 	[[nodiscard]] INLINE auto length() const {
-		return sqrt(length2());
-	}
-	INLINE T makeUnit() {
-		T l2 = length2();
-		if (l2 == T(0) || l2 == T(1)) {
-			return l2;
-		}
-		l2 = sqrt(l2);
-		*this *= (T(1)/l2);
-		return l2;
-	}
-	INLINE T makeLength(T length) {
-		T l2 = length2();
-		if (l2 == T(0)) {
-			return l2;
-		}
-		if (l2 == T(1)) {
-			*this *= length;
-			return l2;
-		}
-		l2 = sqrt(l2);
-		*this *= (length/l2);
-		return l2;
-	}
-};
-
-// Intermediate-level class for integer vector types, with various
-// integer-specific operators, and no length(), makeUnit(), or makeLength().
-template<typename SUBCLASS,typename T,size_t N>
-struct IntVec : public BaseVec<SUBCLASS,T,N> {
-	using BaseType = BaseVec<SUBCLASS,T,N>;
-
-	// Dot product
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE decltype(T()*S()) dot(const IntVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()*S());
-		TS sum(0);
-		for (size_t i = 0; i < N; ++i) {
-			TS product = BaseType::subclass()[i]*that[i];
-			sum += product;
-		}
-		return sum;
+		return sqrt(BaseType::length2());
 	}
 
-	// Euclidean length squared
-	[[nodiscard]] constexpr INLINE decltype(magnitude2(T())) length2() const {
-		using T2 = decltype(magnitude2(T()));
-		T2 sum(0);
-		for (size_t i = 0; i < N; ++i) {
-			T2 square = magnitude2(BaseType::subclass()[i]);
-			sum += square;
-		}
-		return sum;
-	}
-
-	// Bitwise NOT operator
-	[[nodiscard]] constexpr INLINE SUBCLASS operator~() const {
-		SUBCLASS out(T(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = ~(BaseType::subclass()[i]);
-		}
-		return out;
-	}
-
-	// Vec & Vec
-	[[nodiscard]] constexpr INLINE SUBCLASS operator&(const SUBCLASS& that) const {
-		SUBCLASS out(T(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] & that[i];
-		}
-		return out;
-	}
-	// Vec & scalar
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()&S())>::Type operator&(S that) const {
-		using TS = decltype(T()&S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] & that;
-		}
-		return out;
-	}
-	// Vec & Vec
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()&S())>::Type operator&(const IntVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()&S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] & that[i];
-		}
-		return out;
-	}
-	// Vec &= Vec
-	constexpr INLINE void operator&=(const SUBCLASS& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] &= that[i];
-		}
-	}
-	// Vec &= scalar
-	template<typename S>
-	constexpr INLINE void operator&=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] &= that;
-		}
-	}
-	// Vec &= Vec
-	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE void operator&=(const IntVec<THAT_SUBCLASS,S,N>& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] &= that[i];
-		}
-	}
-	// Vec ^ Vec
-	[[nodiscard]] constexpr INLINE SUBCLASS operator^(const SUBCLASS& that) const {
-		SUBCLASS out(T(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] ^ that[i];
-		}
-		return out;
-	}
-	// Vec ^ scalar
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()^S())>::Type operator^(S that) const {
-		using TS = decltype(T()^S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] ^ that;
-		}
-		return out;
-	}
-	// Vec ^ Vec
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()^S())>::Type operator^(const IntVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()^S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] ^ that[i];
-		}
-		return out;
-	}
-	// Vec ^= Vec
-	constexpr INLINE void operator^=(const SUBCLASS& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] ^= that[i];
-		}
-	}
-	// Vec ^= scalar
-	template<typename S>
-	constexpr INLINE void operator^=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] ^= that;
-		}
-	}
-	// Vec ^= Vec
-	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE void operator^=(const IntVec<THAT_SUBCLASS,S,N>& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] ^= that[i];
-		}
-	}
-	// Vec | Vec
-	[[nodiscard]] constexpr INLINE SUBCLASS operator|(const SUBCLASS& that) const {
-		SUBCLASS out(T(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] | that[i];
-		}
-		return out;
-	}
-	// Vec | scalar
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()|S())>::Type operator|(S that) const {
-		using TS = decltype(T()|S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] | that;
-		}
-		return out;
-	}
-	// Vec | Vec
-	template<typename THAT_SUBCLASS,typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()|S())>::Type operator|(const IntVec<THAT_SUBCLASS,S,N>& that) const {
-		using TS = decltype(T()|S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] | that[i];
-		}
-		return out;
-	}
-	// Vec |= Vec
-	constexpr INLINE void operator|=(const SUBCLASS& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] |= that[i];
-		}
-	}
-	// Vec |= scalar
-	template<typename S>
-	constexpr INLINE void operator|=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] |= that;
-		}
-	}
-	// Vec |= Vec
-	template<typename THAT_SUBCLASS,typename S>
-	constexpr INLINE void operator|=(const IntVec<THAT_SUBCLASS,S,N>& that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] |= that[i];
-		}
-	}
-	// Vec << scalar
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()<<S())>::Type operator<<(S that) const {
-		using TS = decltype(T()<<S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] << that;
-		}
-		return out;
-	}
-	// Vec <<= scalar
-	template<typename S>
-	constexpr INLINE void operator<<=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] <<= that;
-		}
-	}
-	// Vec >> scalar
-	template<typename S>
-	[[nodiscard]] constexpr INLINE typename BaseType::template BaseTypeConvert<decltype(T()>>S())>::Type operator>>(S that) const {
-		using TS = decltype(T()>>S());
-		using OutVec = typename SUBCLASS::template TypeConvert<TS>::Type;
-		OutVec out(TS(0));
-		for (size_t i = 0; i < N; ++i) {
-			out[i] = BaseType::subclass()[i] >> that;
-		}
-		return out;
-	}
-	// Vec >>= scalar
-	template<typename S>
-	constexpr INLINE void operator>>=(S that) {
-		for (size_t i = 0; i < N; ++i) {
-			BaseType::subclass()[i] >>= that;
-		}
-	}
+	// These are implemented below the operators, since they use the *= operator.
+	INLINE T makeUnit();
+	INLINE T makeLength(T length);
 };
 
 // Generic, fixed-dimension vector class
 template<typename T,size_t N>
-struct Vec : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,N>,T,N>>::type {
+struct Vec : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>,T,2>,NormVec<Vec<T,N>,T,N>>::type {
 	T v[N];
 
 	using ThisType = Vec<T,N>;
@@ -629,7 +299,7 @@ struct Vec : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,
 // Specialize Vec for N=2, so that initialization constructors can be constexpr,
 // and to add cross, perpendicular, and any other additional functions.
 template<typename T>
-struct Vec<T,2> : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,2>,T,2>>::type {
+struct Vec<T,2> : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>,T,2>,NormVec<Vec<T,2>,T,2>>::type {
 	T v[2];
 
 private:
@@ -719,7 +389,7 @@ public:
 // Specialize Vec for N=3, so that initialization constructors can be constexpr,
 // and to add cross and any other additional functions.
 template<typename T>
-struct Vec<T,3> : public std::conditional<std::is_integral<T>::value,IntVec<Vec<T,2>,T,2>,NormVec<Vec<T,3>,T,3>>::type {
+struct Vec<T,3> : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>,T,2>,NormVec<Vec<T,3>,T,3>>::type {
 	T v[3];
 
 private:
@@ -805,16 +475,540 @@ public:
 };
 
 
+// +Vec (unary plus operator)
+template<typename T,size_t N>
+[[nodiscard]] constexpr INLINE const Vec<T,N>& operator+(const Vec<T,N>& vector) {
+	return vector;
+}
+// -Vec (unary negation operator)
+template<typename T,size_t N>
+[[nodiscard]] constexpr INLINE Vec<decltype(-T()),N> operator-(const Vec<T,N>& vector) {
+	using TS = decltype(-T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = -vector[i];
+	}
+	return out;
+}
+
+// Vec + Vec
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()+S()),N> operator+(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()+S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] + vector1[i];
+	}
+	return out;
+}
+// Vec - Vec
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()-S()),N> operator-(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()-S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] - vector1[i];
+	}
+	return out;
+}
+// Vec * Vec
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()*S()),N> operator*(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()*S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] * vector1[i];
+	}
+	return out;
+}
+// Vec / Vec
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()/S()),N> operator/(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()/S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] / vector1[i];
+	}
+	return out;
+}
+
+// Vec += Vec
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator+=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] += vector1[i];
+	}
+	return vector0;
+}
+// Vec -= Vec
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator-=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] -= vector1[i];
+	}
+	return vector0;
+}
+// Vec *= Vec
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator*=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] *= vector1[i];
+	}
+	return vector0;
+}
+// Vec /= Vec
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator/=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] /= vector1[i];
+	}
+	return vector0;
+}
+
+// Vec + scalar
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()+S()),N> operator+(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()+S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] + scalar;
+	}
+	return out;
+}
+// Vec - scalar
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()-S()),N> operator-(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()-S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] - scalar;
+	}
+	return out;
+}
+// Vec * scalar
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()*S()),N> operator*(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()*S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] * scalar;
+	}
+	return out;
+}
+// Vec / scalar
+template<typename T,size_t N,typename S>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()/S()),N> operator/(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()/S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] / scalar;
+	}
+	return out;
+}
+
+// Vec += scalar
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator+=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] += scalar;
+	}
+	return vector;
+}
+// Vec -= scalar
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator-=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] -= scalar;
+	}
+	return vector;
+}
+// Vec *= scalar
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator*=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] *= scalar;
+	}
+	return vector;
+}
+// Vec /= scalar
+template<typename T,size_t N,typename S>
+constexpr INLINE Vec<T,N>& operator/=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] /= scalar;
+	}
+	return vector;
+}
+
+// scalar + Vec
+template<typename S,typename T,size_t N>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()+T()),N> operator+(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()+T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar + vector[i];
+	}
+	return out;
+}
+// scalar - Vec
+template<typename S,typename T,size_t N>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()-T()),N> operator-(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()-T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar - vector[i];
+	}
+	return out;
+}
+// scalar * Vec
 template<typename S,typename T,size_t N>
 [[nodiscard]] constexpr INLINE Vec<decltype(S()*T()),N> operator*(S scalar, const Vec<T,N>& vector) {
-	using ST = decltype(S()*T());
+	using TS = decltype(S()*T());
+	using OutVec = Vec<TS,N>;
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
-	Vec<ST,N> out(ST(0));
+	OutVec out(TS(0));
 	for (size_t i = 0; i < N; ++i) {
 		out[i] = scalar * vector[i];
 	}
 	return out;
 }
+// scalar / Vec
+template<typename S,typename T,size_t N>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()/T()),N> operator/(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()/T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar / vector[i];
+	}
+	return out;
+}
+
+// Integer-only operations
+
+// ~Vec (bitwise NOT operator)
+template<typename T,size_t N, typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<T,N> operator~(const Vec<T,N>& vector) {
+	using TS = T;
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = ~vector[i];
+	}
+	return out;
+}
+
+// Vec & Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()&S()),N> operator&(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()&S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] & vector1[i];
+	}
+	return out;
+}
+// Vec ^ Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()^S()),N> operator^(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()^S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] ^ vector1[i];
+	}
+	return out;
+}
+// Vec | Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()|S()),N> operator|(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()|S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] | vector1[i];
+	}
+	return out;
+}
+// Vec << Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()<<S()),N> operator<<(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()<<S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] << vector1[i];
+	}
+	return out;
+}
+// Vec >> Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()>>S()),N> operator>>(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()>>S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] >> vector1[i];
+	}
+	return out;
+}
+// Vec &= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator&=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] &= vector1[i];
+	}
+	return vector0;
+}
+// Vec ^= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator^=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] ^= vector1[i];
+	}
+	return vector0;
+}
+// Vec |= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator|=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] |= vector1[i];
+	}
+	return vector0;
+}
+// Vec <<= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator<<=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] <<= vector1[i];
+	}
+	return vector0;
+}
+// Vec >>= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator>>=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] >>= vector1[i];
+	}
+	return vector0;
+}
+
+// Vec & scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()&S()),N> operator&(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()&S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] & scalar;
+	}
+	return out;
+}
+// Vec ^ scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()^S()),N> operator^(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()^S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] ^ scalar;
+	}
+	return out;
+}
+// Vec | scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()|S()),N> operator|(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()|S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] | scalar;
+	}
+	return out;
+}
+// Vec << scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()<<S()),N> operator<<(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()<<S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] << scalar;
+	}
+	return out;
+}
+// Vec >> scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()>>S()),N> operator>>(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()>>S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] >> scalar;
+	}
+	return out;
+}
+// Vec &= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator&=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] &= scalar;
+	}
+	return vector;
+}
+// Vec ^= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator^=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] ^= scalar;
+	}
+	return vector;
+}
+// Vec |= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator|=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] |= scalar;
+	}
+	return vector;
+}
+// Vec <<= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator<<=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] <<= scalar;
+	}
+	return vector;
+}
+// Vec >>= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator>>=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] >>= scalar;
+	}
+	return vector;
+}
+
+// scalar & Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()&T()),N> operator&(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()&T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar & vector[i];
+	}
+	return out;
+}
+// scalar ^ Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()^T()),N> operator^(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()^T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar ^ vector[i];
+	}
+	return out;
+}
+// scalar | Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()|T()),N> operator|(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()|T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar | vector[i];
+	}
+	return out;
+}
+// scalar << Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()<<T()),N> operator<<(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()<<T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar << vector[i];
+	}
+	return out;
+}
+// scalar >> Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()>>T()),N> operator>>(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()>>T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar >> vector[i];
+	}
+	return out;
+}
+
+template<typename SUBCLASS,typename T,size_t N>
+INLINE T NormVec<SUBCLASS,T,N>::makeUnit() {
+	T l2 = BaseType::length2();
+	if (l2 == T(0) || l2 == T(1)) {
+		return l2;
+	}
+	l2 = sqrt(l2);
+	*(SUBCLASS*)this *= (T(1)/l2);
+	return l2;
+}
+template<typename SUBCLASS,typename T,size_t N>
+INLINE T NormVec<SUBCLASS,T,N>::makeLength(T length) {
+	T l2 = BaseType::length2();
+	if (l2 == T(0)) {
+		return l2;
+	}
+	if (l2 == T(1)) {
+		*(SUBCLASS*)this *= length;
+		return l2;
+	}
+	l2 = sqrt(l2);
+	*(SUBCLASS*)this *= (length/l2);
+	return l2;
+}
+
 
 template<typename T,size_t N>
 [[nodiscard]] constexpr INLINE Vec<decltype(conjugate(T())),N> conjugate(const Vec<T,N>& v) {
