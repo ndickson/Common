@@ -10,7 +10,6 @@
 // isn't NaN).
 
 #include "Types.h"
-#include "Vec.h"
 #include <limits>
 #include <type_traits>
 
@@ -18,10 +17,11 @@ OUTER_NAMESPACE_START
 COMMON_LIBRARY_NAMESPACE_START
 
 template<typename T>
-struct Span : public BaseVec<Span<T>,T,2> {
+struct Span {
 	T v[2];
 
 	using ThisType = Span<T>;
+	constexpr static bool isIntegerOrPointer = std::is_integral<T>::value || std::is_pointer<T>::value;
 
 	INLINE Span() = default;
 	constexpr INLINE Span(const ThisType& that) = default;
@@ -31,7 +31,7 @@ struct Span : public BaseVec<Span<T>,T,2> {
 
 	// Creates a Span representing a single value.
 	// For integer or pointer types, max will be one increment more than min, for range [min,max).
-	constexpr INLINE Span(const T& value) : v{value, value + (decltype(T()-T()))(std::is_integral<T>::value || std::is_pointer<T>::value)} {}
+	constexpr INLINE Span(const T& value) : v{value, value + (decltype(T()-T()))(isIntegerOrPointer)} {}
 
 	template<typename S>
 	explicit constexpr INLINE Span(const Span<S>& that) : v{T(that.min()), T(that.max())} {}
@@ -58,6 +58,13 @@ struct Span : public BaseVec<Span<T>,T,2> {
 		return v[i];
 	}
 
+	[[nodiscard]] constexpr INLINE bool operator==(const ThisType &that) const {
+		return (min() == that.min()) && (max() == that.max());
+	}
+	[[nodiscard]] constexpr INLINE bool operator!=(const ThisType &that) const {
+		return !(*this == that);
+	}
+
 	[[nodiscard]] constexpr INLINE T* data() {
 		return v;
 	}
@@ -74,7 +81,7 @@ struct Span : public BaseVec<Span<T>,T,2> {
 	// An integer span is empty if max <= min, since it's inclusive-exclusive.
 	// A floating-point span is empty if max < min, since it's inclusive-inclusive.
 	[[nodiscard]] constexpr INLINE bool isEmpty() const {
-		if (std::is_integral<T>::value)
+		if (isIntegerOrPointer)
 			return max() <= min();
 		return max() < min();
 	}
@@ -148,15 +155,52 @@ struct Span : public BaseVec<Span<T>,T,2> {
 		// previous condition, if the span is the empty span (inverted),
 		// both could be necessary.
 		if (value > max()) {
-			max() = value;
+			if (isIntegerOrPointer) {
+				max() = value+1;
+			}
+			else {
+				max() = value;
+			}
 		}
 	}
-
-	template<typename S>
-	struct TypeConvert {
-		using Type = Span<S>;
-	};
 };
+
+// Span + scalar
+template<typename T,typename S>
+[[nodiscard]] constexpr INLINE Span<decltype(T()+S())> operator+(const Span<T>& span, S scalar) {
+	using TS = decltype(T()+S());
+	return Span<TS>(span[0]+scalar, span[1]+scalar);
+}
+// Span - scalar
+template<typename T,typename S>
+[[nodiscard]] constexpr INLINE Span<decltype(T()-S())> operator-(const Span<T>& span, S scalar) {
+	using TS = decltype(T()-S());
+	return Span<TS>(span[0]-scalar, span[1]-scalar);
+}
+
+// Span += scalar
+template<typename T,typename S>
+constexpr INLINE Span<T>& operator+=(Span<T>& span, S scalar) {
+	span[0] += scalar;
+	span[1] += scalar;
+	return span;
+}
+// Span -= scalar
+template<typename T,typename S>
+constexpr INLINE Span<T>& operator-=(Span<T>& span, S scalar) {
+	span[0] -= scalar;
+	span[1] -= scalar;
+	return span;
+}
+
+// scalar + Span
+template<typename S,typename T>
+[[nodiscard]] constexpr INLINE Span<decltype(S()+T())> operator+(S scalar, const Span<T>& span) {
+	using TS = decltype(S()+T());
+	return Span<TS>(scalar+span[0], scalar+span[1]);
+}
+
+// NOTE: No scalar - Span, since that negates the Span, and that's currently undefined.
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
