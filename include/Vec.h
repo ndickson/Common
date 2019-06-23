@@ -110,10 +110,6 @@ protected:
 	template<typename THAT_SUBCLASS,typename S,size_t M>
 	friend struct BaseVec;
 
-	template<typename S>
-	struct BaseTypeConvert {
-		using Type = typename SUBCLASS::template TypeConvert<S>::Type;
-	};
 public:
 
 	template<typename THAT_SUBCLASS,typename S>
@@ -288,11 +284,6 @@ struct Vec : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>
 		*this = that;
 		that = other;
 	}
-
-	template<typename S>
-	struct TypeConvert {
-		using Type = Vec<S,N>;
-	};
 };
 
 
@@ -378,11 +369,6 @@ public:
 	[[nodiscard]] constexpr INLINE ThisType perpendicular() const {
 		return ThisType(-v[1], v[0]);
 	}
-
-	template<typename S>
-	struct TypeConvert {
-		using Type = Vec<S,N>;
-	};
 };
 
 
@@ -467,11 +453,6 @@ public:
 			v[0]*that[1] - v[1]*that[0]
 		);
 	}
-
-	template<typename S>
-	struct TypeConvert {
-		using Type = Vec<S,N>;
-	};
 };
 
 
