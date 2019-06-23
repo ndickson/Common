@@ -781,6 +781,18 @@ template<typename T,size_t N,typename S, typename std::enable_if<std::is_integra
 	}
 	return out;
 }
+// Vec % Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()%S()),N> operator%(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	using TS = decltype(T()%S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector0[i] % vector1[i];
+	}
+	return out;
+}
 // Vec &= Vec
 template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
 constexpr INLINE Vec<T,N>& operator&=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
@@ -818,6 +830,14 @@ template<typename T,size_t N,typename S, typename std::enable_if<std::is_integra
 constexpr INLINE Vec<T,N>& operator>>=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
 	for (size_t i = 0; i < N; ++i) {
 		vector0[i] >>= vector1[i];
+	}
+	return vector0;
+}
+// Vec %= Vec
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator%=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+	for (size_t i = 0; i < N; ++i) {
+		vector0[i] %= vector1[i];
 	}
 	return vector0;
 }
@@ -882,6 +902,18 @@ template<typename T,size_t N,typename S, typename std::enable_if<std::is_integra
 	}
 	return out;
 }
+// Vec % scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(T()%S()),N> operator%(const Vec<T,N>& vector, S scalar) {
+	using TS = decltype(T()%S());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = vector[i] % scalar;
+	}
+	return out;
+}
 // Vec &= scalar
 template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
 constexpr INLINE Vec<T,N>& operator&=(Vec<T,N>& vector, S scalar) {
@@ -919,6 +951,14 @@ template<typename T,size_t N,typename S, typename std::enable_if<std::is_integra
 constexpr INLINE Vec<T,N>& operator>>=(Vec<T,N>& vector, S scalar) {
 	for (size_t i = 0; i < N; ++i) {
 		vector[i] >>= scalar;
+	}
+	return vector;
+}
+// Vec %= scalar
+template<typename T,size_t N,typename S, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+constexpr INLINE Vec<T,N>& operator%=(Vec<T,N>& vector, S scalar) {
+	for (size_t i = 0; i < N; ++i) {
+		vector[i] %= scalar;
 	}
 	return vector;
 }
@@ -980,6 +1020,18 @@ template<typename S,typename T,size_t N, typename std::enable_if<std::is_integra
 	OutVec out(TS(0));
 	for (size_t i = 0; i < N; ++i) {
 		out[i] = scalar >> vector[i];
+	}
+	return out;
+}
+// scalar % Vec
+template<typename S,typename T,size_t N, typename std::enable_if<std::is_integral<T>::value && std::is_integral<S>::value>::type* = nullptr>
+[[nodiscard]] constexpr INLINE Vec<decltype(S()%T()),N> operator%(S scalar, const Vec<T,N>& vector) {
+	using TS = decltype(S()%T());
+	using OutVec = Vec<TS,N>;
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	OutVec out(TS(0));
+	for (size_t i = 0; i < N; ++i) {
+		out[i] = scalar % vector[i];
 	}
 	return out;
 }
