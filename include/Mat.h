@@ -355,7 +355,7 @@ template<typename T0,size_t NROWS,size_t NMID,size_t NCOLS,bool ROW_MAJOR0,typen
 
 // Mat += Mat
 template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
-[[nodiscard]] constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator+=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
+constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator+=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
 	constexpr size_t NMAJOR0 = ROW_MAJOR0 ? NROWS : NCOLS;
 	if (ROW_MAJOR0 == ROW_MAJOR1) {
 		for (size_t major = 0; major < NMAJOR0; ++major) {
@@ -374,7 +374,7 @@ template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool 
 }
 // Mat -= Mat
 template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
-[[nodiscard]] constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator-=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
+constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator-=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
 	constexpr size_t NMAJOR0 = ROW_MAJOR0 ? NROWS : NCOLS;
 	if (ROW_MAJOR0 == ROW_MAJOR1) {
 		for (size_t major = 0; major < NMAJOR0; ++major) {
@@ -393,7 +393,7 @@ template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool 
 }
 // Mat *= scalar
 template<typename T,size_t NROWS,size_t NCOLS,bool ROW_MAJOR,typename S>
-[[nodiscard]] constexpr INLINE Mat<T,NROWS,NCOLS,ROW_MAJOR>& operator*=(const Mat<T,NROWS,NCOLS,ROW_MAJOR>& mat, const S& scalar) {
+constexpr INLINE Mat<T,NROWS,NCOLS,ROW_MAJOR>& operator*=(const Mat<T,NROWS,NCOLS,ROW_MAJOR>& mat, const S& scalar) {
 	constexpr size_t NMAJOR = ROW_MAJOR ? NROWS : NCOLS;
 	for (size_t major = 0; major < NMAJOR; ++major) {
 		mat[major] *= scalar;
@@ -403,7 +403,7 @@ template<typename T,size_t NROWS,size_t NCOLS,bool ROW_MAJOR,typename S>
 
 // Mat *= Mat
 template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
-[[nodiscard]] constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator*=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NCOLS,NCOLS,ROW_MAJOR1>& mat1) {
+constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator*=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NCOLS,NCOLS,ROW_MAJOR1>& mat1) {
 	mat0 = mat0*mat1;
 	return mat0;
 }
