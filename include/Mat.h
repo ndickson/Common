@@ -296,6 +296,63 @@ template<typename S,typename T,size_t NROWS,size_t NCOLS,bool ROW_MAJOR>
 	return outVec;
 }
 
+// Mat * Mat
+template<typename T0,size_t NROWS,size_t NMID,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
+[[nodiscard]] constexpr INLINE Mat<decltype(T0()*T1()),NROWS,NCOLS,ROW_MAJOR0> operator*(const Mat<T0,NROWS,NMID,ROW_MAJOR0>& mat0, const Mat<T1,NMID,NCOLS,ROW_MAJOR1>& mat1) {
+	using TS = decltype(T0()*T1());
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
+	Mat<TS,NROWS,NCOLS,ROW_MAJOR0> outMat(TS(0));
+	if constexpr (ROW_MAJOR0 && ROW_MAJOR1) {
+		for (size_t row = 0; row < NROWS; ++row) {
+			auto& outVec = outMat[row];
+			auto& vec0 = mat0[row];
+			for (size_t col = 0; col < NCOLS; ++col) {
+				TS v = vec0[0] * mat1[0][col];
+				for (size_t mid = 1; mid < NMID; ++mid) {
+					v += vec0[mid] * mat1[mid][col];
+				}
+				outVec[col] = v;
+			}
+		}
+	}
+	else if constexpr (ROW_MAJOR0 && !ROW_MAJOR1) {
+		for (size_t row = 0; row < NROWS; ++row) {
+			auto& outVec = outMat[row];
+			auto& vec0 = mat0[row];
+			for (size_t col = 0; col < NCOLS; ++col) {
+				auto& vec1 = mat1[col];
+				outVec[col] = vec0.dot(vec1);
+			}
+		}
+	}
+	else if constexpr (!ROW_MAJOR0 && ROW_MAJOR1) {
+		for (size_t col = 0; col < NCOLS; ++col) {
+			auto& outVec = outMat[col];
+			for (size_t row = 0; row < NROWS; ++row) {
+				TS v = mat0[0][row] * mat1[0][col];
+				for (size_t mid = 1; mid < NMID; ++mid) {
+					v += mat0[mid][row] * mat1[mid][col];
+				}
+				outVec[row] = v;
+			}
+		}
+	}
+	else {
+		for (size_t col = 0; col < NCOLS; ++col) {
+			auto& outVec = outMat[col];
+			auto& vec1 = mat1[col];
+			for (size_t row = 0; row < NROWS; ++row) {
+				TS v = mat0[0][row] * vec1[0];
+				for (size_t mid = 1; mid < NMID; ++mid) {
+					v += mat0[mid][row] * vec1[mid];
+				}
+				outVec[row] = v;
+			}
+		}
+	}
+	return outMat;
+}
+
 // Mat += Mat
 template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
 [[nodiscard]] constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator+=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
@@ -344,6 +401,12 @@ template<typename T,size_t NROWS,size_t NCOLS,bool ROW_MAJOR,typename S>
 	return mat;
 }
 
+// Mat *= Mat
+template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
+[[nodiscard]] constexpr INLINE Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& operator*=(Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NCOLS,NCOLS,ROW_MAJOR1>& mat1) {
+	mat0 = mat0*mat1;
+	return mat0;
+}
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
