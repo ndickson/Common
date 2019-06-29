@@ -229,8 +229,10 @@ struct Vec : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>
 		}
 	}
 
+	// Scalar value constructor
+	// NOTE: Initialization to zero is just so that the function can be constexpr.
 	template<typename S>
-	explicit INLINE Vec(S that) {
+	constexpr explicit INLINE Vec(S that) : v{T(0)} {
 		const T value = T(that);
 		for (size_t i = 0; i < N; ++i) {
 			v[i] = value;
