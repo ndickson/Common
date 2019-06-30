@@ -8,8 +8,8 @@
 #include "Vec.h"
 #include <type_traits>
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 template<typename SUBCLASS,typename T,size_t N>
 struct BaseBox {
@@ -28,10 +28,10 @@ public:
 	static constexpr size_t TupleSize = N;
 
 private:
-	constexpr INLINE Span<T>& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE Span<T>& operator[](size_t i) {
 		return subclass()[i];
 	}
-	constexpr INLINE const Span<T>& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const Span<T>& operator[](size_t i) const {
 		return subclass()[i];
 	}
 	template<typename THAT_SUBCLASS,typename S,size_t M>
@@ -55,7 +55,7 @@ public:
 		}
 	}
 
-	constexpr INLINE Vec<T,N> min() const {
+	[[nodiscard]] constexpr INLINE Vec<T,N> min() const {
 		// NOTE: Initialization to zero is just so that the function can be constexpr.
 		Vec<T,N> out(T(0));
 		for (size_t i = 0; i < N; ++i) {
@@ -63,7 +63,7 @@ public:
 		}
 		return out;
 	}
-	constexpr INLINE Vec<T,N> max() const {
+	[[nodiscard]] constexpr INLINE Vec<T,N> max() const {
 		// NOTE: Initialization to zero is just so that the function can be constexpr.
 		Vec<T,N> out(T(0));
 		for (size_t i = 0; i < N; ++i) {
@@ -71,7 +71,7 @@ public:
 		}
 		return out;
 	}
-	constexpr INLINE Vec<T,N> centre() const {
+	[[nodiscard]] constexpr INLINE Vec<T,N> centre() const {
 		// NOTE: Initialization to zero is just so that the function can be constexpr.
 		Vec<T,N> out(T(0));
 		for (size_t i = 0; i < N; ++i) {
@@ -79,7 +79,7 @@ public:
 		}
 		return out;
 	}
-	constexpr INLINE Vec<decltype(T()-T()),N> size() const {
+	[[nodiscard]] constexpr INLINE Vec<decltype(T()-T()),N> size() const {
 		using S = decltype(T()-T());
 		// NOTE: Initialization to zero is just so that the function can be constexpr.
 		Vec<S,N> out(S(0));
@@ -144,7 +144,7 @@ struct Box : public BaseBox<Box<T,N>,T,N> {
 	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
 	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
 
-	constexpr INLINE Span<T>& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE Span<T>& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -152,7 +152,7 @@ struct Box : public BaseBox<Box<T,N>,T,N> {
 
 		return v[i];
 	}
-	constexpr INLINE const Span<T>& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const Span<T>& operator[](size_t i) const {
 		return v[i];
 	}
 
@@ -208,7 +208,7 @@ public:
 	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
 	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
 
-	constexpr INLINE Span<T>& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE Span<T>& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -216,7 +216,7 @@ public:
 
 		return v[i];
 	}
-	constexpr INLINE const Span<T>& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const Span<T>& operator[](size_t i) const {
 		return v[i];
 	}
 
@@ -275,7 +275,7 @@ public:
 	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
 	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
 
-	constexpr INLINE Span<T>& operator[](size_t i) {
+	[[nodiscard]] constexpr INLINE Span<T>& operator[](size_t i) {
 		// This static_assert needs to be in a function, because it refers to
 		// ThisType, and the compiler doesn't let you reference the type that's
 		// currently being compiled from class scope.
@@ -283,7 +283,7 @@ public:
 
 		return v[i];
 	}
-	constexpr INLINE const Span<T>& operator[](size_t i) const {
+	[[nodiscard]] constexpr INLINE const Span<T>& operator[](size_t i) const {
 		return v[i];
 	}
 
