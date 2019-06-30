@@ -4,8 +4,8 @@
 #include "Vec.h"
 #include <stdint.h>
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 [[nodiscard]] constexpr INLINE uint64 rotateLeft(const uint64 x, const int bits) {
 	// Hopefully the compiler realizes that there's a single x86-64 instruction for this.
