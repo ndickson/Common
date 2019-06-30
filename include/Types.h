@@ -7,13 +7,19 @@
 
 #define OUTER_NAMESPACE             ndickson
 #define COMMON_LIBRARY_NAMESPACE    Common
-#define OUTER_NAMESPACE_START   namespace OUTER_NAMESPACE {
+#define OUTER_NAMESPACE_BEGIN   namespace OUTER_NAMESPACE {
 #define OUTER_NAMESPACE_END     }
-#define COMMON_LIBRARY_NAMESPACE_START namespace COMMON_LIBRARY_NAMESPACE {
+#define COMMON_LIBRARY_NAMESPACE_BEGIN namespace COMMON_LIBRARY_NAMESPACE {
 #define COMMON_LIBRARY_NAMESPACE_END   }
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+#ifdef _WIN32
+#define INLINE __forceinline
+#else
+#define INLINE __attribute__((always_inline))
+#endif
+
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 using int8 = int8_t;
 using int16 = int16_t;
@@ -46,6 +52,16 @@ using Vec3I = Vec3<int64>;
 
 template<typename T,size_t NROWS,size_t NCOLS=NROWS,bool ROW_MAJOR=true>
 struct Mat;
+
+template<typename T>
+using Mat2 = Mat<T,2,2>;
+template<typename T>
+using Mat3 = Mat<T,3,3>;
+
+using Mat2f = Mat2<float>;
+using Mat2d = Mat2<double>;
+using Mat3f = Mat3<float>;
+using Mat3d = Mat3<double>;
 
 
 template<typename T>
@@ -94,11 +110,72 @@ class BufQueue;
 template<typename T>
 struct is_trivially_relocatable : public std::is_trivially_copyable<T> {};
 
+// These are default implementations that do nothing for float, double, or integer types.
+[[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const double& conjugate(const double& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const int8& conjugate(const int8& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const int16& conjugate(const int16& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const int32& conjugate(const int32& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const int64& conjugate(const int64& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const uint8& conjugate(const uint8& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const uint16& conjugate(const uint16& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const uint32& conjugate(const uint32& v) {
+	return v;
+}
+[[nodiscard]] constexpr INLINE const uint64& conjugate(const uint64& v) {
+	return v;
+}
+
+[[nodiscard]] constexpr INLINE float magnitude2(const float& v) {
+	return v*v;
+}
+[[nodiscard]] constexpr INLINE double magnitude2(const double& v) {
+	return v*v;
+}
+[[nodiscard]] constexpr INLINE int16 magnitude2(const int8& v) {
+	return int16(v)*v;
+}
+[[nodiscard]] constexpr INLINE int32 magnitude2(const int16& v) {
+	return int32(v)*v;
+}
+[[nodiscard]] constexpr INLINE int64 magnitude2(const int32& v) {
+	return int64(v)*v;
+}
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const int64& v) {
+	// No 128-bit integer type to avoid overflow, but we can extend the range
+	// slightly with uint64.
+	uint64 vp = (v < 0) ? uint64(-v) : uint64(v);
+	return vp*vp;
+}
+[[nodiscard]] constexpr INLINE uint16 magnitude2(const uint8& v) {
+	return uint16(v)*v;
+}
+[[nodiscard]] constexpr INLINE uint32 magnitude2(const uint16& v) {
+	return uint32(v)*v;
+}
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint32& v) {
+	return uint64(v)*v;
+}
+[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint64& v) {
+	// No 128-bit integer type to avoid overflow.
+	return v*v;
+}
+
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
-
-#ifdef _WIN32
-#define INLINE __forceinline
-#else
-#define INLINE __attribute__((always_inline))
-#endif
