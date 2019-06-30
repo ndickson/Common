@@ -3,8 +3,8 @@
 #include "Types.h"
 #include "Vec.h"
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 template<typename SUBCLASS,typename T,size_t NROWS,size_t NCOLS=NROWS,bool ROW_MAJOR=true>
 struct BaseMat {
