@@ -10,8 +10,8 @@
 #include <stdlib.h> // For free and realloc
 #include <type_traits>
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 template<typename T>
 INLINE ArrayPtr<T>::~ArrayPtr() {
