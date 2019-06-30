@@ -8,8 +8,8 @@
 #include "Types.h"
 #include <type_traits>
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 // This class is effectively an std::unique_ptr, but using
 // malloc, free, and realloc, with a provided realloc wrapper function.
