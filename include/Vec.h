@@ -8,75 +8,9 @@
 #include <math.h>
 #include <type_traits>
 
-OUTER_NAMESPACE_START
-COMMON_LIBRARY_NAMESPACE_START
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
-// These are default implementations that do nothing for float, double, or integer types.
-[[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const double& conjugate(const double& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const int8& conjugate(const int8& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const int16& conjugate(const int16& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const int32& conjugate(const int32& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const int64& conjugate(const int64& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const uint8& conjugate(const uint8& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const uint16& conjugate(const uint16& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const uint32& conjugate(const uint32& v) {
-	return v;
-}
-[[nodiscard]] constexpr INLINE const uint64& conjugate(const uint64& v) {
-	return v;
-}
-
-[[nodiscard]] constexpr INLINE float magnitude2(const float& v) {
-	return v*v;
-}
-[[nodiscard]] constexpr INLINE double magnitude2(const double& v) {
-	return v*v;
-}
-[[nodiscard]] constexpr INLINE int16 magnitude2(const int8& v) {
-	return int16(v)*v;
-}
-[[nodiscard]] constexpr INLINE int32 magnitude2(const int16& v) {
-	return int32(v)*v;
-}
-[[nodiscard]] constexpr INLINE int64 magnitude2(const int32& v) {
-	return int64(v)*v;
-}
-[[nodiscard]] constexpr INLINE uint64 magnitude2(const int64& v) {
-	// No 128-bit integer type to avoid overflow, but we can extend the range
-	// slightly with uint64.
-	uint64 vp = (v < 0) ? uint64(-v) : uint64(v);
-	return vp*vp;
-}
-[[nodiscard]] constexpr INLINE uint16 magnitude2(const uint8& v) {
-	return uint16(v)*v;
-}
-[[nodiscard]] constexpr INLINE uint32 magnitude2(const uint16& v) {
-	return uint32(v)*v;
-}
-[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint32& v) {
-	return uint64(v)*v;
-}
-[[nodiscard]] constexpr INLINE uint64 magnitude2(const uint64& v) {
-	// No 128-bit integer type to avoid overflow.
-	return v*v;
-}
 
 // Base class for Vec specializations, so that the specializations don't need
 // to duplicate all of the common functions.
@@ -478,7 +412,7 @@ template<typename T,size_t N>
 
 // Vec + Vec
 template<typename T,size_t N,typename S>
-[[nodiscard]] constexpr INLINE Vec<decltype(T()+S()),N> operator+(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+[[nodiscard]] constexpr INLINE Vec<decltype(T()+S()),N> operator+(const Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	using TS = decltype(T()+S());
 	using OutVec = Vec<TS,N>;
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
@@ -490,7 +424,7 @@ template<typename T,size_t N,typename S>
 }
 // Vec - Vec
 template<typename T,size_t N,typename S>
-[[nodiscard]] constexpr INLINE Vec<decltype(T()-S()),N> operator-(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+[[nodiscard]] constexpr INLINE Vec<decltype(T()-S()),N> operator-(const Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	using TS = decltype(T()-S());
 	using OutVec = Vec<TS,N>;
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
@@ -502,7 +436,7 @@ template<typename T,size_t N,typename S>
 }
 // Vec * Vec
 template<typename T,size_t N,typename S>
-[[nodiscard]] constexpr INLINE Vec<decltype(T()*S()),N> operator*(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+[[nodiscard]] constexpr INLINE Vec<decltype(T()*S()),N> operator*(const Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	using TS = decltype(T()*S());
 	using OutVec = Vec<TS,N>;
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
@@ -514,7 +448,7 @@ template<typename T,size_t N,typename S>
 }
 // Vec / Vec
 template<typename T,size_t N,typename S>
-[[nodiscard]] constexpr INLINE Vec<decltype(T()/S()),N> operator/(const Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+[[nodiscard]] constexpr INLINE Vec<decltype(T()/S()),N> operator/(const Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	using TS = decltype(T()/S());
 	using OutVec = Vec<TS,N>;
 	// NOTE: Initialization to zero is just so that the function can be constexpr.
@@ -527,7 +461,7 @@ template<typename T,size_t N,typename S>
 
 // Vec += Vec
 template<typename T,size_t N,typename S>
-constexpr INLINE Vec<T,N>& operator+=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+constexpr INLINE Vec<T,N>& operator+=(Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	for (size_t i = 0; i < N; ++i) {
 		vector0[i] += vector1[i];
 	}
@@ -535,7 +469,7 @@ constexpr INLINE Vec<T,N>& operator+=(Vec<T,N>& vector0, const Vec<S,N> &vector1
 }
 // Vec -= Vec
 template<typename T,size_t N,typename S>
-constexpr INLINE Vec<T,N>& operator-=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+constexpr INLINE Vec<T,N>& operator-=(Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	for (size_t i = 0; i < N; ++i) {
 		vector0[i] -= vector1[i];
 	}
@@ -543,7 +477,7 @@ constexpr INLINE Vec<T,N>& operator-=(Vec<T,N>& vector0, const Vec<S,N> &vector1
 }
 // Vec *= Vec
 template<typename T,size_t N,typename S>
-constexpr INLINE Vec<T,N>& operator*=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+constexpr INLINE Vec<T,N>& operator*=(Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	for (size_t i = 0; i < N; ++i) {
 		vector0[i] *= vector1[i];
 	}
@@ -551,7 +485,7 @@ constexpr INLINE Vec<T,N>& operator*=(Vec<T,N>& vector0, const Vec<S,N> &vector1
 }
 // Vec /= Vec
 template<typename T,size_t N,typename S>
-constexpr INLINE Vec<T,N>& operator/=(Vec<T,N>& vector0, const Vec<S,N> &vector1) {
+constexpr INLINE Vec<T,N>& operator/=(Vec<T,N>& vector0, const Vec<S,N>& vector1) {
 	for (size_t i = 0; i < N; ++i) {
 		vector0[i] /= vector1[i];
 	}
