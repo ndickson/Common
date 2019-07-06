@@ -40,9 +40,10 @@ enum class FormatType : uint16 {
 	EXTENSIBLE  = 0xFFFE
 };
 
+// This immediately follows a ChunkHeader
 // chunkID is FORMAT
 // chunkSize should be 16, 18, or 40
-struct FormatChunk : public ChunkHeader {
+struct FormatChunk {
 	FormatType formatType;  // If EXTENSIBLE, the FormatChunkExtension formatType has the format type
 	uint16  nChannels;      // 1 for mono; 2 for stereo; up to 18 defined speaker locations
 	uint32  blocksPerSec;   // Number of blocks per second (e.g. 44100 or 48000)
@@ -59,9 +60,10 @@ struct FormatChunkExtension {
 	uint16  guid[7];            // 14 bytes of fixed values
 };
 
+// This immediately follows a ChunkHeader
 // chunkID is FACT
 // chunkSize should be 4
-struct FactChunk : public ChunkHeader {
+struct FactChunk {
 	uint32  samplesPerChannel;  
 };
 
