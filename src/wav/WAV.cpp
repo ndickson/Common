@@ -298,7 +298,10 @@ bool ReadWAVFile(const char* filename, AudioTracks<T>& tracks) {
 	tracks.tracks.setSize(0);
 
 	Array<char> contents;
-	ReadWholeFile(filename, contents);
+	bool success = ReadWholeFile(filename, contents);
+	if (!success) {
+		return false;
+	}
 
 	size_t size = contents.size();
 	const uint8* data = reinterpret_cast<const uint8*>(contents.data());
