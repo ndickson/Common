@@ -507,12 +507,6 @@ bool WriteWAVFile(const char* filename, const AudioTracks<T>& tracks, size_t out
 		}
 	}
 
-	// FormatChunk requires the number of bytes per second to fit into a uint32
-	size_t outputBytesPerSecond = tracks.nSamplesPerSecond*outputBytesPerSample;
-	if (outputBytesPerSecond > std::numeric_limits<uint32>::max()) {
-		return false;
-	}
-
 	// Determine sample count
 	const size_t nTracks = tracks.tracks.size();
 	size_t nSamplesPerTrack = 0;
@@ -521,6 +515,12 @@ bool WriteWAVFile(const char* filename, const AudioTracks<T>& tracks, size_t out
 		if (currentSamples > nSamplesPerTrack) {
 			nSamplesPerTrack = currentSamples;
 		}
+	}
+
+	// FormatChunk requires the number of bytes per second to fit into a uint32
+	size_t outputBytesPerSecond = tracks.nSamplesPerSecond*nTracks*outputBytesPerSample;
+	if (outputBytesPerSecond > std::numeric_limits<uint32>::max()) {
+		return false;
 	}
 
 	const size_t sampleDataSize = nTracks*nSamplesPerTrack*outputBytesPerSample;
@@ -535,7 +535,8 @@ bool WriteWAVFile(const char* filename, const AudioTracks<T>& tracks, size_t out
 	}
 
 	// For simplicity, write contents to memory buffer before writing to file
-	char* contents = new char[size];
+	char*const contentStart = new char[size];
+	char* contents = contentStart;
 	std::unique_ptr<char[]> contentsDeleter(contents);
 
 	FileHeader*const fileHeader = reinterpret_cast<FileHeader*>(contents);
@@ -650,7 +651,7 @@ bool WriteWAVFile(const char* filename, const AudioTracks<T>& tracks, size_t out
 		contents[sampleDataSize] = 0;
 	}
 
-	bool success = WriteWholeFile(filename, contents, size);
+	bool success = WriteWholeFile(filename, contentStart, size);
 	return success;
 }
 
