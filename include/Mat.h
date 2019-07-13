@@ -1,5 +1,7 @@
 #pragma once
 
+// This file contains a generic matrix class with fixed dimensions, Mat.
+
 #include "Types.h"
 #include "Vec.h"
 
@@ -138,7 +140,7 @@ template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool 
 // Mat != Mat
 template<typename T0,size_t NROWS,size_t NCOLS,bool ROW_MAJOR0,typename T1,bool ROW_MAJOR1>
 [[nodiscard]] constexpr INLINE bool operator!=(const Mat<T0,NROWS,NCOLS,ROW_MAJOR0>& mat0, const Mat<T1,NROWS,NCOLS,ROW_MAJOR1>& mat1) {
-	return !(*this == that);
+	return !(mat0 == mat1);
 }
 
 // Mat.transpose()
