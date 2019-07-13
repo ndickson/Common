@@ -8,6 +8,7 @@
 #include "Types.h"
 
 #include <limits>  // For std::numeric_limits
+#include <memory>  // For std::unique_ptr
 #include <utility> // For std::pair
 
 OUTER_NAMESPACE_BEGIN
@@ -71,6 +72,30 @@ template<> INLINE void convertDataTo(const double from, int16& to) {
 	// Round to closest
 	// TODO: Should this be *32767.5 and a different shift?
 	to = int16((from * 32768) + 0.5);
+}
+template<> INLINE void convertDataTo(const uint8 from, int32& to) {
+	// Zero extend before subtracting 128
+	to = (int32(uint32(from)) - 128) << 24;
+}
+template<> INLINE void convertDataTo(const int16 from, int32& to) {
+	// Just shift
+	to = int32(from) << 16;
+}
+template<> INLINE void convertDataTo(const int64 from, int32& to) {
+	// Just shift
+	int32 temp = int32(from>>32);
+	// Round up if closest and won't overflow
+	to = temp + ((from & (1ULL<<31)) != 0 && temp != 0x7FFFFFFF);
+}
+template<> INLINE void convertDataTo(const float from, int32& to) {
+	// Round to closest
+	// TODO: Should this be *2147483647.5 and a different shift?
+	to = int32((from * 2147483648) + 0.5f);
+}
+template<> INLINE void convertDataTo(const double from, int32& to) {
+	// Round to closest
+	// TODO: Should this be *2147483647.5 and a different shift?
+	to = int32((from * 2147483648) + 0.5);
 }
 
 template<> INLINE void convertDataTo(const uint8 from, float& to) {
@@ -431,9 +456,199 @@ template bool ReadWAVFile<int16>(const char* filename, AudioTracks<int16>& track
 template bool ReadWAVFile<float>(const char* filename, AudioTracks<float>& tracks);
 template bool ReadWAVFile<double>(const char* filename, AudioTracks<double>& tracks);
 
+template<typename FROM_T,typename TO_T>
+void interleaveTrackData(const Array<Array<FROM_T>>& tracks, const size_t nSamplesPerTrack, TO_T* toData) {
+	const size_t nTracks = tracks.size();
+	if (nTracks == 1) {
+		const Array<FROM_T>& track = tracks[0];
+		for (size_t i = 0; i < nSamplesPerTrack; ++i) {
+			convertDataTo(track[i], toData[i]);
+		}
+	}
+	else {
+		for (size_t blocki = 0; blocki < nSamplesPerTrack; ++blocki) {
+			for (size_t tracki = 0; tracki < nTracks; ++tracki) {
+				const Array<FROM_T>& track = tracks[tracki];
+				if (blocki < track.size()) {
+					convertDataTo(track[blocki], *toData);
+				}
+				else {
+					convertDataTo(0.0f, *toData);
+				}
+				++toData;
+			}
+		}
+	}
+}
+
 template<typename T>
 bool WriteWAVFile(const char* filename, const AudioTracks<T>& tracks, size_t outputBitsPerSample) {
-	// FIXME: Implement this!!!
+	// FormatChunk requires the number of blocks per second to fit into a uint32
+	if (tracks.nSamplesPerSecond > std::numeric_limits<uint32>::max()) {
+		return false;
+	}
+
+	// Determine output format
+	bool isOutputFloatType = (outputBitsPerSample >= 32);
+	size_t outputBytesPerSample;
+	if (isOutputFloatType) {
+		outputBytesPerSample = (outputBitsPerSample > 32) ? 8 : 4;
+	}
+	else {
+		outputBytesPerSample = (outputBitsPerSample+7)/8;
+		if (outputBytesPerSample < 1) {
+			outputBytesPerSample = 1;
+		}
+		else if (outputBytesPerSample > 4) {
+			outputBytesPerSample = 4;
+		}
+	}
+
+	// FormatChunk requires the number of bytes per second to fit into a uint32
+	size_t outputBytesPerSecond = tracks.nSamplesPerSecond*outputBytesPerSample;
+	if (outputBytesPerSecond > std::numeric_limits<uint32>::max()) {
+		return false;
+	}
+
+	// Determine sample count
+	const size_t nTracks = tracks.tracks.size();
+	size_t nSamplesPerTrack = 0;
+	for (size_t tracki = 0; tracki < nTracks; ++tracki) {
+		const size_t currentSamples = tracks.tracks[tracki].size();
+		if (currentSamples > nSamplesPerTrack) {
+			nSamplesPerTrack = currentSamples;
+		}
+	}
+
+	const size_t sampleDataSize = nTracks*nSamplesPerTrack*outputBytesPerSample;
+	// Chunks are always padded to an even number of bytes
+	const size_t sampleDataSizePadded = sampleDataSize + (sampleDataSize & 1);
+
+	// The total file size (minus the first 8 bytes) must fit into a uint32
+	const size_t size = sizeof(FileHeader) + 3*sizeof(ChunkHeader) + sizeof(uint32) + sizeof(float) + sizeof(FormatChunk) + sampleDataSizePadded;
+	if (size-2*sizeof(uint32) > std::numeric_limits<uint32>::max() || nTracks*outputBytesPerSample > std::numeric_limits<uint16>::max()) {
+		// TODO: Write multiple full RIFF chunks to represent more data.
+		return false;
+	}
+
+	// For simplicity, write contents to memory buffer before writing to file
+	char* contents = new char[size];
+	std::unique_ptr<char[]> contentsDeleter(contents);
+
+	FileHeader*const fileHeader = reinterpret_cast<FileHeader*>(contents);
+	fileHeader->riffID = RIFF_ID;
+	fileHeader->riffSize = uint32(size - 2*sizeof(uint32));
+	fileHeader->waveID = WAVE_ID;
+	contents += sizeof(FileHeader);
+
+	// Chunk indicating this code generated the WAV file, plus a 32-bit version number
+	// whose bytes are not symmetrical and a float with value 1.0f, to record
+	// endianness.
+	ChunkHeader*const signatureChunkHeader = reinterpret_cast<ChunkHeader*>(contents);
+	*reinterpret_cast<uint32*>(&signatureChunkHeader->chunkID) =
+		uint32('A') | (uint32('T')<<8) | (uint32('Q')<<16) | (uint32('F')<<24);
+	signatureChunkHeader->chunkSize = uint32(sizeof(uint64));
+	contents += sizeof(ChunkHeader);
+
+	uint32*const signatureInt = reinterpret_cast<uint32*>(contents);
+	*signatureInt = 1;
+	contents += sizeof(uint32);
+	float*const signatureFloat = reinterpret_cast<float*>(contents);
+	*signatureFloat = 1.0f;
+	contents += sizeof(float);
+
+	ChunkHeader*const formatChunkHeader = reinterpret_cast<ChunkHeader*>(contents);
+	formatChunkHeader->chunkID = ChunkType::FORMAT;
+	formatChunkHeader->chunkSize = uint32(sizeof(FormatChunk));
+	contents += sizeof(ChunkHeader);
+
+	FormatChunk*const formatChunk = reinterpret_cast<FormatChunk*>(contents);
+	formatChunk->formatType = isOutputFloatType ? FormatType::FLOAT : FormatType::PCM;
+	formatChunk->nChannels = uint16(nTracks);
+	formatChunk->blocksPerSec = uint32(tracks.nSamplesPerSecond);
+	formatChunk->bytesPerSec = uint32(outputBytesPerSecond);
+	formatChunk->blockSize = uint16(nTracks*outputBytesPerSample);
+	formatChunk->bitsPerSample = uint16(outputBytesPerSample*8);
+	contents += sizeof(FormatChunk);
+
+	ChunkHeader*const dataChunkHeader = reinterpret_cast<ChunkHeader*>(contents);
+	dataChunkHeader->chunkID = ChunkType::DATA;
+	dataChunkHeader->chunkSize = uint32(sampleDataSize);
+	contents += sizeof(ChunkHeader);
+
+	if (isOutputFloatType) {
+		if (outputBytesPerSample == 4) {
+			float* data = reinterpret_cast<float*>(contents);
+			interleaveTrackData(tracks.tracks, nSamplesPerTrack, data);
+		}
+		else {
+			double* data = reinterpret_cast<double*>(contents);
+			interleaveTrackData(tracks.tracks, nSamplesPerTrack, data);
+		}
+	}
+	else if (outputBytesPerSample == 1) {
+		uint8* data = reinterpret_cast<uint8*>(contents);
+		interleaveTrackData(tracks.tracks, nSamplesPerTrack, data);
+	}
+	else if (outputBytesPerSample == 2) {
+		int16* data = reinterpret_cast<int16*>(contents);
+		interleaveTrackData(tracks.tracks, nSamplesPerTrack, data);
+	}
+	else if (outputBytesPerSample == 3) {
+		// Awkward case: 24-bit signed integers
+		uint8* data = reinterpret_cast<uint8*>(contents);
+		if (nTracks == 1) {
+			const Array<T>& track = tracks.tracks[0];
+			for (size_t i = 0; i < nSamplesPerTrack; ++i) {
+				// Convert to 32-bit integer, then shift
+				int32 sample;
+				convertDataTo(track[i], sample);
+				int32 newSample = (sample>>8);
+				// Round up
+				newSample += ((sample>>7) & 1) && (newSample != 0x7FFFFF);
+				data[0] = uint8(newSample);
+				data[1] = uint8(newSample>>8);
+				data[2] = uint8(newSample>>16);
+				data += 3;
+			}
+		}
+		else {
+			for (size_t blocki = 0; blocki < nSamplesPerTrack; ++blocki) {
+				for (size_t tracki = 0; tracki < nTracks; ++tracki) {
+					const Array<T>& track = tracks.tracks[tracki];
+					if (blocki < track.size()) {
+						// Convert to 32-bit integer, then shift
+						int32 sample;
+						convertDataTo(track[blocki], sample);
+						int32 newSample = (sample>>8);
+						// Round up
+						newSample += ((sample>>7) & 1) && (newSample != 0x7FFFFF);
+						data[0] = uint8(newSample);
+						data[1] = uint8(newSample>>8);
+						data[2] = uint8(newSample>>16);
+					}
+					else {
+						data[0] = 0;
+						data[1] = 0;
+						data[2] = 0;
+					}
+					data += 3;
+				}
+			}
+		}
+	}
+	else if (outputBytesPerSample == 4) {
+		int32* data = reinterpret_cast<int32*>(contents);
+		interleaveTrackData(tracks.tracks, nSamplesPerTrack, data);
+	}
+
+	if (sampleDataSize & 1) {
+		// For completeness, initialize the padding byte to 0.
+		contents[sampleDataSize] = 0;
+	}
+
+	bool success = WriteWholeFile(filename, contents, size);
+	return success;
 }
 
 template bool WriteWAVFile<uint8>(const char* filename, const AudioTracks<uint8>& tracks, size_t outputBitsPerSample);
