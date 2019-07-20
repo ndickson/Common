@@ -1,5 +1,8 @@
 #pragma once
 
+// This file contains structures, enumerations, and functions directly
+// related to WAV audio file format.
+
 #include "Types.h"
 
 OUTER_NAMESPACE_BEGIN
@@ -7,10 +10,14 @@ namespace wav {
 
 using namespace Common;
 
+// These WAV file format structures have members in aligned locations,
+// but just in case, enable struct packing, to avoid any padding bytes.
+#pragma pack(push, 1)
+
 constexpr static uint32 RIFF_ID = 'R' | (uint32('I')<<8) | (uint32('F')<<16) | (uint32('F')<<24);
 constexpr static uint32 WAVE_ID = 'W' | (uint32('A')<<8) | (uint32('V')<<16) | (uint32('E')<<24);
 
-struct FileHeader {
+struct alignas(1) FileHeader {
 	uint32  riffID;     // "RIFF" (RIFF_ID)
 	uint32  riffSize;   // 4 bytes following this + size of all other chunks in the file
 	uint32  waveID;     // "WAVE" (WAVE_ID)
@@ -27,7 +34,7 @@ enum class ChunkType : uint32 {
 	DATA   = 'd' | (uint32('a')<<8) | (uint32('t')<<16) | (uint32('a')<<24)
 };
 
-struct ChunkHeader {
+struct alignas(1) ChunkHeader {
 	ChunkType   chunkID;
 	uint32      chunkSize;  // Number of bytes in this chunk, excluding ChunkHeader
 };
@@ -43,7 +50,7 @@ enum class FormatType : uint16 {
 // This immediately follows a ChunkHeader
 // chunkID is FORMAT
 // chunkSize should be 16, 18, or 40
-struct FormatChunk {
+struct alignas(1) FormatChunk {
 	FormatType formatType;  // If EXTENSIBLE, the FormatChunkExtension formatType has the format type
 	uint16  nChannels;      // 1 for mono; 2 for stereo; up to 18 defined speaker locations
 	uint32  blocksPerSec;   // Number of blocks per second (e.g. 44100 or 48000)
@@ -52,7 +59,7 @@ struct FormatChunk {
 	uint16  bitsPerSample;  // 8 for 8-bit samples; 16 for 16-bit samples
 };
 
-struct FormatChunkExtension {
+struct alignas(1) FormatChunkExtension {
 	uint16  extensionSize;      // 0 or 22 bytes in the extension following this
 	uint16  validBitsPerSample; // Number of bits in each sample that actually contain data
 	uint32  channelMask;        // Indication of which speaker locations have channels
@@ -63,9 +70,11 @@ struct FormatChunkExtension {
 // This immediately follows a ChunkHeader
 // chunkID is FACT
 // chunkSize should be 4
-struct FactChunk {
+struct alignas(1) FactChunk {
 	uint32  samplesPerChannel;  
 };
+
+#pragma pack(pop)
 
 } // namespace wav
 OUTER_NAMESPACE_END
