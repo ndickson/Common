@@ -1,5 +1,9 @@
 #pragma once
 
+// This file contains declarations of functions for reading and writing
+// audio track data from WAV format files into a simple in-memory format.
+// Definitions of the functions are in WAV.cpp
+
 #include "Types.h"
 #include "Array.h"
 
