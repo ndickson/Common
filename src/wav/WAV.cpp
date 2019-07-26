@@ -1,4 +1,6 @@
-// This file contains definitions of functions for reading/writing WAV audio files.
+// This file contains definitions of functions for reading and writing
+// audio track data from WAV format files into a simple in-memory format.
+// Declarations of the functions are in WAV.h
 
 #include "wav/WAV.h"
 #include "wav/WAVFormat.h"
