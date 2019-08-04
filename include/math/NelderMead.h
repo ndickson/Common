@@ -130,7 +130,7 @@ constexpr inline size_t minimizeNelderMead(
 			}
 			++stepsSinceComputedCentroid;
 
-			const STATE_TYPE direction(centroid - states[numStates-1]);
+			const STATE_TYPE direction(centroid - states[worstStateIndex]);
 
 			// Compute worst state reflected through the centroid of the rest
 			const STATE_TYPE reflectedState(centroid + reflectCoefficient*direction);
