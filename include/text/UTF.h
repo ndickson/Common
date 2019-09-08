@@ -3,7 +3,7 @@
 // This file contains functions for converting between
 // UTF-8, UTF-16, and UTF-32 text strings.
 
-#include "Types.h"
+#include "../Types.h"
 
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
