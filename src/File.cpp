@@ -4,7 +4,7 @@
 #include "Array.h"
 #include "ArrayDef.h"
 #include "Types.h"
-#include "UTF.h"
+#include "text/UTF.h"
 
 #ifdef _WIN32
 #include <Windows.h>
