@@ -46,7 +46,8 @@ void escapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& o
 // If stopToken is not nullptr, it must point to a null-terminated UTF-8 text string,
 // indicating when to stop early, e.g. a double-quote, making parsing a quoted string
 // inside a larger string easier.  The start of the match will be considered the
-// end of the input string.
+// end of the input string.  Note that stopToken will not be checked-for inside of
+// escape sequences.
 //
 // In all, this function unescapes:
 //     \\ as backslash
@@ -66,7 +67,7 @@ void escapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& o
 //     \x##... where variable number of # are hexadecimal as hexadecimal UTF code point
 //     \u#### where # are all hexadecimal as hexadecimal UTF code point
 //     \U######## where # are all hexadecimal as hexadecimal UTF code point
-// Any other escape sequences are copied as is.
+// Any other escape sequences are copied as is without the backslash.
 void unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& outText, const char*const stopToken = nullptr, const BackslashEscapeStyle style = BackslashEscapeStyle::C);
 
 } // namespace text
