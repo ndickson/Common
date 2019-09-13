@@ -21,11 +21,11 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 	// Windows: use Windows API, to avoid UTF problems
 	// with C++ standard library functions on Windows.
 	size_t utf8Length = strlen(filename);
-	size_t utf16Length = UTF16Length(filename, utf8Length);
+	size_t utf16Length = text::UTF16Length(filename, utf8Length);
 	static_assert(sizeof(wchar_t) == sizeof(uint16));
 	BufArray<uint16, MAX_PATH> filenameUTF16;
 	filenameUTF16.setSize(utf16Length+1);
-	UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
+	text::UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
 	filenameUTF16[utf16Length] = 0;
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
 	HANDLE fileHandle = CreateFile2((LPCWSTR)filenameUTF16.data(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
@@ -126,11 +126,11 @@ bool WriteWholeFile(const char* filename, const char* contents, size_t length) {
 	// Windows: use Windows API, to avoid UTF problems
 	// with C++ standard library functions on Windows.
 	size_t utf8Length = strlen(filename);
-	size_t utf16Length = UTF16Length(filename, utf8Length);
+	size_t utf16Length = text::UTF16Length(filename, utf8Length);
 	static_assert(sizeof(wchar_t) == sizeof(uint16));
 	BufArray<uint16, MAX_PATH> filenameUTF16;
 	filenameUTF16.setSize(utf16Length+1);
-	UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
+	text::UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
 	filenameUTF16[utf16Length] = 0;
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
 	HANDLE fileHandle = CreateFile2((LPCWSTR)filenameUTF16.data(), GENERIC_WRITE, 0, CREATE_ALWAYS, nullptr);
