@@ -1,6 +1,6 @@
 #pragma once
 
-// This file contains declarations or functions for escaping and unescaping
+// This file contains declarations of functions for escaping and unescaping
 // text strings in various styles.
 
 #include "../Array.h"
