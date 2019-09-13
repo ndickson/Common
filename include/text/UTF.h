@@ -182,6 +182,83 @@ constexpr inline size_t UTF8ToUTF32(const char* utf8, size_t utf8Length, uint32*
 	return length;
 }
 
+// 6 UTF-8 bytes can only represent 31 bits, so for 32 bits,
+// 7 UTF-8 bytes are needed, (6 continuation bytes, each with 6 bits)
+constexpr size_t UTF8_MAX_UTF32_BYTES = 7;
+// The current maximum valid UTF-32 code point, 0x10FFFF needs 21 bits,
+// which can be represented in 4 UTF-8 bytes, (3 bits in byte 0, and
+// 6 bits in each of the 3 continuation bytes).
+constexpr size_t UTF8_MAX_VALID_UTF32_BYTES = 4;
+
+// Given a UTF-32 code point, this returns the number of bytes
+// that the equivalent UTF-8 representation would require.
+// The return value should be at least 1 and at most UTF8_MAX_UTF32_BYTES (7),
+// or at most UTF8_MAX_VALID_UTF32_BYTES (4) for the highest maximum valid
+// UTF-32 code point (0x10FFFF).
+// This return value is equivalent to that of UTF32ToUTF8SingleBytes.
+constexpr INLINE size_t UTF32ToUTF8SingleBytes(uint32 utf32) {
+	if (utf32 < 0x80) {
+		return 1;
+	}
+
+	size_t numBytes = 2;
+	utf32 >>= 11;
+	while (utf32 != 0) {
+		++numBytes;
+		utf32 >>= 5;
+	}
+
+	return numBytes;
+}
+
+// Given a UTF-32 code point, this convert it to the equivalent UTF-8
+// reprensentation and returns the number of bytes used in the UTF-8.
+// The number of bytes should be at least 1 and at most UTF8_MAX_UTF32_BYTES (7),
+// or at most UTF8_MAX_VALID_UTF32_BYTES (4) for the highest maximum valid
+// UTF-32 code point (0x10FFFF).
+// This number of bytes is equivalent to the return value of UTF32ToUTF8SingleBytes.
+constexpr inline size_t UTF32ToUTF8Single(uint32 utf32, char* utf8) {
+	if (utf32 < 0x80) {
+		// 7 bits fits in 1 UTF-8 byte
+		*utf8 = char(utf32);
+		return 1;
+	}
+
+	// Multi-byte character:
+	// First, compute continuation bytes in reverse order.
+	char* temputf8 = utf8;
+	uint32 mask = 0x40;
+	size_t numBytes = 1;
+	do {
+		*temputf8 = char(utf32 & 0x3F) | 0x80;
+		utf32 >>= 6;
+		mask >>= 1;
+		++temputf8;
+		++numBytes;
+	} while(utf32 >= mask);
+
+	// Next, compute first byte.
+	// Top bits are bitwise NOT of one less than twice mask,
+	// which is equivalent to negation of twice mask.
+	const char byte0 = char(utf32 | -int32(2*mask));//~((2*mask)-1));
+
+	// Finally, reverse the bytes.
+	*temputf8 = *utf8;
+	*utf8 = byte0;
+	++utf8;
+	--temputf8;
+
+	while (utf8 < temputf8) {
+		const char temp = *utf8;
+		*utf8 = *temputf8;
+		*temputf8 = temp;
+		++utf8;
+		--temputf8;
+	}
+
+	return numBytes;
+}
+
 // Given an array of UTF-8 bytes with the specified length (in bytes),
 // this returns the number of UTF-16 code units (16-bit integers) needed.
 // NOTE: This does not count a byte order marker or null terminator.
