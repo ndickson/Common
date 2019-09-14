@@ -157,13 +157,13 @@ static INLINE uint32 hexCharToValue(char c) {
 	return uint32(-1);
 }
 
-void unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& outText, const char*const stopToken, const BackslashEscapeStyle style) {
+const char* unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& outText, const char*const stopToken, const BackslashEscapeStyle style) {
 	// NOTE: This function intentionally does not clear outText, instead just
 	// appending to it, to allow easier processing of text in context.
 
 	if (inBegin == nullptr) {
 		// Treat a null input string as an empty string.
-		return;
+		return inBegin;
 	}
 
 	// inEnd being null indicates a null-terminated string.
@@ -187,7 +187,7 @@ void unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>&
 			// Matched full stopToken iff at its end.
 			if (stopToken[numEqual] == 0) {
 				// Encountered stopToken, so return.
-				return;
+				return inBegin;
 			}
 		}
 		++inBegin;
@@ -201,7 +201,7 @@ void unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>&
 
 		if (isNullTerminated ? (*inBegin == 0) : (inBegin == inEnd)) {
 			// End of string with no following character
-			return;
+			return inBegin;
 		}
 		// NOTE: DO NOT check stopToken here,
 		// e.g. \" is an escaped double-quote even if stopToken is "
@@ -314,6 +314,153 @@ void unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>&
 		outText.setSize(currentSize + UTF32ToUTF8SingleBytes(outc32));
 		UTF32ToUTF8Single(outc32, outText.data() + currentSize);
 	}
+
+	return inBegin;
+}
+
+size_t backslashEscapedStringLength(const char* inBegin, const char*const inEnd, const char*const stopToken, size_t* unescapedLength, const BackslashEscapeStyle style) {
+	// NOTE: Unlike unescapeBackslash not clearing outText, this function *does*
+	// clear unescapedLength at the beginning, since it's not much overhead
+	// or code to add two integers together if the caller needs to.
+	if (unescapedLength != nullptr) {
+		*unescapedLength = 0;
+	}
+
+	if (inBegin == nullptr) {
+		// Treat a null input string as an empty string.
+		return 0;
+	}
+
+	const char*const origInBegin = inBegin;
+
+	// inEnd being null indicates a null-terminated string.
+	const bool isNullTerminated = (inEnd == nullptr);
+
+	const bool hasStopToken = (stopToken != nullptr) && (stopToken[0] != 0);
+
+	while (isNullTerminated ? (*inBegin != 0) : (inBegin != inEnd)) {
+		char c = *inBegin;
+		if (hasStopToken && c == stopToken[0]) {
+			// Compare with rest of stopToken
+			size_t numEqual = 1;
+			while (stopToken[numEqual] != 0 && (isNullTerminated || inBegin+numEqual != inEnd) && inBegin[numEqual] == stopToken[numEqual]) {
+				++numEqual;
+			}
+			// TODO: If stopToken ever might be very long and have large overlaps
+			// with the text and contain repeats, optimize for that, but it's
+			// probably not worth it right now, since stopToken should usually
+			// be either short or very unique.
+
+			// Matched full stopToken iff at its end.
+			if (stopToken[numEqual] == 0) {
+				// Encountered stopToken, so return.
+				return inBegin-origInBegin;
+			}
+		}
+		++inBegin;
+		if (c != '\\') {
+			// Unescaped character
+			if (unescapedLength != nullptr) {
+				++*unescapedLength;
+			}
+			continue;
+		}
+
+		// Backslash encountered, so check next character.
+
+		if (isNullTerminated ? (*inBegin == 0) : (inBegin == inEnd)) {
+			// End of string with no following character
+			return inBegin-origInBegin;
+		}
+		// NOTE: DO NOT check stopToken here,
+		// e.g. \" is an escaped double-quote even if stopToken is "
+
+		c = *inBegin;
+		++inBegin;
+		bool isSingle = true;
+		uint32 outc32;
+		switch (c) {
+			case '0': case '1': case '2': case '3':
+			case '4': case '5': case '6': case '7': {
+				// 1, 2, or 3 octal digits
+				outc32 = (c - '0');
+				bool isEnd = isNullTerminated ? (*inBegin == 0) : (inBegin == inEnd);
+				if (!isEnd && *inBegin >= '0' && *inBegin <= '7') {
+					// 2nd octal digit
+					c = *inBegin;
+					++inBegin;
+					outc32 = (outc32<<3) | (c - '0');
+					isEnd = isNullTerminated ? (*inBegin == 0) : (inBegin == inEnd);
+					if (!isEnd && *inBegin >= '0' && *inBegin <= '7') {
+						// 3rd octal digit
+						c = *inBegin;
+						++inBegin;
+						outc32 = (outc32<<3) | (c - '0');
+					}
+				}
+				// Check if fits in a single byte UTF-8 character.
+				isSingle = (outc32 < 0x80);
+				break;
+			}
+			case 'x':   // Should be 2 or more, but accept 1 or more hexadecimal digits
+			case 'u':   // Should be 4, but accept 1-4 hex digits
+			case 'U': { // Should be 8, but accept 1-8 hex digits
+						// If there are none, though, just output 'x'/'u'/'U'.
+				bool isEnd = isNullTerminated ? (*inBegin == 0) : (inBegin == inEnd);
+
+				if (isEnd) {
+					// End of string.
+					// Fall back to just 'x'/'u'/'U'.
+					break;
+				}
+				uint32 value = hexCharToValue(*inBegin);
+				if (value >= 16) {
+					// Not a hex character.
+					// Fall back to just 'x'/'u'/'U'.
+					break;
+				}
+				// First valid value
+				outc32 = value;
+				++inBegin;
+				size_t charCount = 1;
+				const size_t maxCharCount =
+					(c == 'u') ? 4 : (
+						(c == 'U') ? 8 : std::numeric_limits<size_t>::max()
+					);
+				while (isNullTerminated ? (*inBegin != 0) : (inBegin != inEnd)) {
+					value = hexCharToValue(*inBegin);
+					if (value >= 16) {
+						// Not a hex character.
+						break;
+					}
+					outc32 = (outc32 << 4) | value;
+					++inBegin;
+					++charCount;
+					if (charCount == maxCharCount) {
+						break;
+					}
+				}
+
+				// Check if fits in a single byte UTF-8 character.
+				isSingle = (outc32 < 0x80);
+				break;
+			}
+			default: break;
+		}
+		if (unescapedLength != nullptr) {
+			if (isSingle) {
+				// Single byte character case
+				++*unescapedLength;
+			}
+			else {
+				// Multi-byte character case
+				*unescapedLength += UTF32ToUTF8SingleBytes(outc32);
+			}
+		}
+
+	}
+
+	return inBegin-origInBegin;
 }
 
 } // namespace text
