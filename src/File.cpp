@@ -1,13 +1,18 @@
 // This file contains definitions of functions for reading/writing files.
-
 #include "File.h"
 #include "Array.h"
 #include "ArrayDef.h"
 #include "Types.h"
 #include "text/UTF.h"
 
+#include <atomic>
+
 #ifdef _WIN32
 #include <Windows.h>
+// Remove problematic defines that conflict with proper function or enum member names.
+#undef CreateFile
+#undef ABSOLUTE
+#undef RELATIVE
 #include <string.h>
 #else
 #include <stdio.h>
@@ -16,8 +21,8 @@
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
 
-bool ReadWholeFile(const char* filename, Array<char>& contents) {
 #if _WIN32
+static HANDLE CreateFileWrapper(const char* filename, DWORD accessMode, DWORD sharedMode, DWORD creationMode) {
 	// Windows: use Windows API, to avoid UTF problems
 	// with C++ standard library functions on Windows.
 	size_t utf8Length = strlen(filename);
@@ -28,10 +33,17 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 	text::UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
 	filenameUTF16[utf16Length] = 0;
 #if (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
-	HANDLE fileHandle = CreateFile2((LPCWSTR)filenameUTF16.data(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, nullptr);
+	HANDLE fileHandle = CreateFile2((LPCWSTR)filenameUTF16.data(), accessMode, sharedMode, creationMode, nullptr);
 #else
-	HANDLE fileHandle = CreateFileW((LPCWSTR)filenameUTF16.data(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, INVALID_HANDLE_VALUE);
+	HANDLE fileHandle = CreateFileW((LPCWSTR)filenameUTF16.data(), accessMode, sharedMode, nullptr, creationMode, 0, INVALID_HANDLE_VALUE);
 #endif
+	return fileHandle;
+}
+#endif
+
+bool ReadWholeFile(const char* filename, Array<char>& contents) {
+#if _WIN32
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
 		return false;
 	}
@@ -58,7 +70,7 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 			// A threshold of (1ULL<<32) above would probably work, too,
 			// but it's 31 just to be safe.
 			DWORD numBytesRead;
-			success = ReadFile(fileHandle, contents.data(), (DWORD)fileSize, &numBytesRead, nullptr) != 0;
+			success = ::ReadFile(fileHandle, contents.data(), (DWORD)fileSize, &numBytesRead, nullptr) != 0;
 			// NOTE: Unlike using &=, this avoids reading numBytesRead when success is already false,
 			// which may avoid a runtime check failure in debug builds.
 			success = (success && (fileSize == numBytesRead));
@@ -73,7 +85,7 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 					partialReadSize = uint32(remaining);
 				}
 				DWORD numBytesRead;
-				success = ReadFile(fileHandle, data, partialReadSize, &numBytesRead, nullptr) != 0;
+				success = ::ReadFile(fileHandle, data, partialReadSize, &numBytesRead, nullptr) != 0;
 				success = (success && (partialReadSize == numBytesRead));
 				remaining -= partialReadSize;
 				data += partialReadSize;
@@ -97,6 +109,8 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 
 	bool success = (fseek(file, 0, SEEK_END) == 0);
 	if (success) {
+		// FIXME: This may or may not fail correctly for large files on systems
+		// where ftell returns a 32-bit integer.
 		auto fileSize = ftell(file);
 		success = (fileSize >= 0);
 		if (success) {
@@ -121,22 +135,9 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 #endif
 }
 
-bool WriteWholeFile(const char* filename, const char* contents, size_t length) {
+bool WriteWholeFile(const char* filename, const void* contents, size_t length) {
 #if _WIN32
-	// Windows: use Windows API, to avoid UTF problems
-	// with C++ standard library functions on Windows.
-	size_t utf8Length = strlen(filename);
-	size_t utf16Length = text::UTF16Length(filename, utf8Length);
-	static_assert(sizeof(wchar_t) == sizeof(uint16));
-	BufArray<uint16, MAX_PATH> filenameUTF16;
-	filenameUTF16.setSize(utf16Length+1);
-	text::UTF8ToUTF16(filename, utf8Length, filenameUTF16.data());
-	filenameUTF16[utf16Length] = 0;
-#if (_WIN32_WINNT >= _WIN32_WINNT_WIN8)
-	HANDLE fileHandle = CreateFile2((LPCWSTR)filenameUTF16.data(), GENERIC_WRITE, 0, CREATE_ALWAYS, nullptr);
-#else
-	HANDLE fileHandle = CreateFileW((LPCWSTR)filenameUTF16.data(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, INVALID_HANDLE_VALUE);
-#endif
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, 0, CREATE_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
 		return false;
 	}
@@ -147,7 +148,7 @@ bool WriteWholeFile(const char* filename, const char* contents, size_t length) {
 		// A threshold of (1ULL<<32) above would probably work, too,
 		// but it's 31 just to be safe.
 		DWORD numBytesWritten;
-		success = WriteFile(fileHandle, contents, (DWORD)length, &numBytesWritten, nullptr) != 0;
+		success = ::WriteFile(fileHandle, contents, (DWORD)length, &numBytesWritten, nullptr) != 0;
 		// NOTE: Unlike using &=, this avoids reading numBytesWritten when success is already false,
 		// which may avoid a runtime check failure in debug builds.
 		success = (success && (length == numBytesWritten));
@@ -161,10 +162,10 @@ bool WriteWholeFile(const char* filename, const char* contents, size_t length) {
 				partialWriteSize = uint32(remaining);
 			}
 			DWORD numBytesWritten;
-			success = WriteFile(fileHandle, contents, partialWriteSize, &numBytesWritten, nullptr) != 0;
+			success = ::WriteFile(fileHandle, contents, partialWriteSize, &numBytesWritten, nullptr) != 0;
 			success = (success && (partialWriteSize == numBytesWritten));
 			remaining -= partialWriteSize;
-			contents += partialWriteSize;
+			((const char*&)contents) += partialWriteSize;
 		} while (success && remaining != 0);
 	}
 
@@ -184,6 +185,380 @@ bool WriteWholeFile(const char* filename, const char* contents, size_t length) {
 	fclose(file);
 
 	return success;
+#endif
+}
+
+
+class FileHandle::InternalHandle {
+public:
+	std::atomic<size_t> referenceCount;
+#if _WIN32
+	HANDLE fileHandle;
+#else
+	FILE* file;
+#endif
+
+#if _WIN32
+	InternalHandle(HANDLE fileHandle_) : referenceCount(1), fileHandle(fileHandle_) {
+		assert(fileHandle != INVALID_HANDLE_VALUE);
+	}
+#else
+	InternalHandle(FILE* file_) : referenceCount(1), file(file_) {
+		assert(file != nullptr);
+}
+#endif
+
+	~InternalHandle() {
+		assert(referenceCount.load(std::memory_order_relaxed) != 0);
+#if _WIN32
+		CloseHandle(fileHandle);
+#else
+		fclose(file);
+#endif
+	}
+};
+
+COMMON_LIBRARY_EXPORTED void FileHandle::incrementRefCount() noexcept {
+	assert(p != nullptr);
+	++(p->referenceCount);
+	assert(p->referenceCount.load(std::memory_order_relaxed) != 0);
+}
+
+COMMON_LIBRARY_EXPORTED void FileHandle::decrementRefCount() noexcept {
+	assert(p != nullptr);
+	auto count = --(p->referenceCount);
+	if (count == 0) {
+		delete p;
+	}
+}
+
+COMMON_LIBRARY_EXPORTED size_t FileHandle::getRefCount() noexcept {
+	if (p == nullptr) {
+		return 0;
+	}
+	return p->referenceCount.load(std::memory_order_relaxed);
+}
+
+COMMON_LIBRARY_EXPORTED WriteFileHandle CreateFile(const char* filename) {
+#ifdef _WIN32
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, CREATE_ALWAYS);
+	if (fileHandle == INVALID_HANDLE_VALUE) {
+		return WriteFileHandle();
+	}
+	return WriteFileHandle(new FileHandle::InternalHandle(fileHandle));
+#else
+	FILE* file = fopen(filename, "wb");
+	if (file == nullptr) {
+		return WriteFileHandle();
+	}
+	return WriteFileHandle(new FileHandle::InternalHandle(file));
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED ReadFileHandle OpenFileRead(const char* filename) {
+#ifdef _WIN32
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_EXISTING);
+	if (fileHandle == INVALID_HANDLE_VALUE) {
+		return ReadFileHandle();
+	}
+	return ReadFileHandle(new FileHandle::InternalHandle(fileHandle));
+#else
+	FILE* file = fopen(filename, "rb");
+	if (file == nullptr) {
+		return ReadFileHandle();
+	}
+	return ReadFileHandle(new FileHandle::InternalHandle(file));
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename) {
+#ifdef _WIN32
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_ALWAYS);
+	if (fileHandle == INVALID_HANDLE_VALUE) {
+		return WriteFileHandle();
+	}
+	// Start at the end, in order to append.
+	LARGE_INTEGER position;
+	position.QuadPart = 0;
+	BOOL success = SetFilePointerEx(fileHandle, position, nullptr, FILE_END);
+	if (!success) {
+		CloseHandle(fileHandle);
+		return WriteFileHandle();
+	}
+	return WriteFileHandle(new FileHandle::InternalHandle(fileHandle));
+#else
+	// The + is just so that we can get the file size using fseek and ftell.
+	FILE* file = fopen(filename, "a+b");
+	if (file == nullptr) {
+		return WriteFileHandle();
+	}
+	return WriteFileHandle(new FileHandle::InternalHandle(file));
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filename) {
+#ifdef _WIN32
+	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_ALWAYS);
+	if (fileHandle == INVALID_HANDLE_VALUE) {
+		return ReadWriteFileHandle();
+	}
+	return ReadWriteFileHandle(new FileHandle::InternalHandle(fileHandle));
+#else
+	// First, try opening an existing file for read and write.
+	FILE* file = fopen(filename, "r+b");
+	if (file == nullptr) {
+		// File might not exist; try creating it for read and write.
+		file = fopen(filename, "w+b");
+		if (file == nullptr) {
+			return ReadWriteFileHandle();
+		}
+	}
+	return ReadWriteFileHandle(new FileHandle::InternalHandle(file));
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFromFile, size_t lengthToRead) {
+	if (file.p == nullptr || lengthToRead == 0 || dataFromFile == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	HANDLE fileHandle = file.p->fileHandle;
+	assert(fileHandle != INVALID_HANDLE_VALUE);
+	if (lengthToRead < (1ULL<<31)) {
+		// Single read
+		// A threshold of (1ULL<<32) above would probably work, too,
+		// but it's 31 just to be safe.
+		// Initialize numBytesRead to zero, since ReadFile apparently might not write to it
+		// if immediate failure occurs, and we don't want uninitialized values returned.
+		DWORD numBytesRead = 0;
+		::ReadFile(fileHandle, dataFromFile, (DWORD)lengthToRead, &numBytesRead, nullptr);
+		return size_t(numBytesRead);
+	}
+
+	// Do multiple reads
+	char* data = (char*)dataFromFile;
+	uint64 remaining = lengthToRead;
+	bool success;
+	do {
+		uint32 partialReadSize = (1<<30);
+		if (remaining < partialReadSize) {
+			partialReadSize = uint32(remaining);
+		}
+		DWORD numBytesRead = 0;
+		success = ::ReadFile(fileHandle, data, partialReadSize, &numBytesRead, nullptr) != 0;
+		success = (success && (partialReadSize == numBytesRead));
+		remaining -= numBytesRead;
+		data += partialReadSize;
+	} while (success && remaining != 0);
+	return lengthToRead - size_t(remaining);
+#else
+	FILE* filePointer = file.p->file;
+	assert(filePointer != nullptr);
+	return fread(dataFromFile, 1, lengthToRead, filePointer);
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED size_t WriteFile(const WriteFileHandle& file, const void* dataToWrite, size_t lengthToWrite) {
+	if (file.p == nullptr || lengthToWrite == 0 || dataToWrite == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	HANDLE fileHandle = file.p->fileHandle;
+	assert(fileHandle != INVALID_HANDLE_VALUE);
+	if (lengthToWrite < (1ULL<<31)) {
+		// Single write
+		// A threshold of (1ULL<<32) above would probably work, too,
+		// but it's 31 just to be safe.
+		// Initialize numBytesWritten to zero, since WriteFile apparently might not write to it
+		// if immediate failure occurs, and we don't want uninitialized values returned.
+		DWORD numBytesWritten = 0;
+		::WriteFile(fileHandle, dataToWrite, (DWORD)lengthToWrite, &numBytesWritten, nullptr);
+		return size_t(numBytesWritten);
+	}
+
+	// Do multiple reads
+	const char* data = (const char*)dataToWrite;
+	uint64 remaining = lengthToWrite;
+	bool success;
+	do {
+		uint32 partialWriteSize = (1<<30);
+		if (remaining < partialWriteSize) {
+			partialWriteSize = uint32(remaining);
+		}
+		DWORD numBytesWritten = 0;
+		success = ::WriteFile(fileHandle, data, partialWriteSize, &numBytesWritten, nullptr) != 0;
+		success = (success && (partialWriteSize == numBytesWritten));
+		remaining -= numBytesWritten;
+		data += partialWriteSize;
+	} while (success && remaining != 0);
+	return lengthToWrite - size_t(remaining);
+#else
+	FILE* filePointer = file.p->file;
+	assert(filePointer != nullptr);
+	return fwrite(dataToWrite, 1, lengthToWrite, filePointer);
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED uint64 GetFileSize(const FileHandle& file) {
+	if (file.p == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	HANDLE fileHandle = file.p->fileHandle;
+	assert(fileHandle != INVALID_HANDLE_VALUE);
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+	// GetFileSizeEx isn't available in UWP, so use GetFileInformationByHandleEx.
+	FILE_STANDARD_INFO fileInfo;
+	bool success = (GetFileInformationByHandleEx(fileHandle, FileStandardInfo, &fileInfo, sizeof(fileInfo)) != 0);
+#else
+	LARGE_INTEGER fileSizeStruct;
+	bool success = (GetFileSizeEx(fileHandle, &fileSizeStruct) != 0);
+#endif
+
+	if (!success) {
+		return 0;
+	}
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+	uint64 fileSize = fileInfo.EndOfFile.QuadPart;
+#else
+	uint64 fileSize = fileSizeStruct.QuadPart;
+#endif
+	return fileSize;
+#else
+	FILE* filePointer = file.p->file;
+	assert(filePointer != nullptr);
+
+	// Save the current file offset.
+	fpos_t originalFileOffset;
+	bool success = (fgetpos(filePointer, &originalFileOffset) == 0);
+	if (!success) {
+		return 0;
+	}
+
+	success = (fseek(filePointer, 0, SEEK_END) == 0);
+	if (!success) {
+		return 0;
+	}
+
+	// FIXME: This won't report the correct size for large files on systems
+	// where ftell returns a 32-bit integer.
+	auto fileSize = ftell(filePointer);
+
+	// Restore the original file offset.
+	// In the unlikely event that this fails, it wouldn't affect the file size.
+	fsetpos(filePointer, &originalFileOffset);
+
+	return uint64(fileSize);
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED uint64 GetFileOffset(const FileHandle& file) {
+	if (file.p == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	HANDLE fileHandle = file.p->fileHandle;
+	assert(fileHandle != INVALID_HANDLE_VALUE);
+
+	// There is no GetFilePointer[Ex], so we use SetFilePointerEx with
+	// a distance of zero and FILE_CURRENT, in order to retrieve the
+	// current file offset.
+	LARGE_INTEGER distanceZero;
+	distanceZero.QuadPart = 0;
+	LARGE_INTEGER fileOffset;
+	bool success = (SetFilePointerEx(fileHandle, distanceZero, &fileOffset, FILE_CURRENT) != 0);
+	if (!success) {
+		return 0;
+	}
+	return fileOffset.QuadPart;
+#else
+	FILE* filePointer = file.p->file;
+	assert(filePointer != nullptr);
+
+	// FIXME: This won't always report the correct offset for large files on systems
+	// where ftell returns a 32-bit integer.
+	auto fileOffset = ftell(filePointer);
+	return fileOffset;
+#endif
+}
+
+#ifdef _WIN32
+static bool SetFileOffsetInternal(HANDLE fileHandle, int64 fileOffset, FileOffsetType type) {
+	assert(fileHandle != INVALID_HANDLE_VALUE);
+
+	DWORD setFilePointerType;
+	switch (type) {
+		case FileOffsetType::ABSOLUTE: {
+			setFilePointerType = FILE_BEGIN;
+			break;
+		}
+		case FileOffsetType::RELATIVE: {
+			setFilePointerType = FILE_CURRENT;
+			break;
+		}
+		case FileOffsetType::END: {
+			setFilePointerType = FILE_END;
+			break;
+		}
+		default: {
+			return false;
+		}
+	}
+	LARGE_INTEGER distance;
+	distance.QuadPart = fileOffset;
+	bool success = (SetFilePointerEx(fileHandle, distance, nullptr, setFilePointerType) != 0);
+	return success;
+}
+#else
+static uint64 SetFileOffsetInternal(FILE* filePointer, int64 fileOffset, FileOffsetType type) {
+	assert(filePointer != nullptr);
+
+	int fseekType;
+	switch (type) {
+		case FileOffsetType::ABSOLUTE: {
+			fseekType = SEEK_SET;
+			break;
+		}
+		case FileOffsetType::RELATIVE: {
+			fseekType = SEEK_CUR;
+			break;
+		}
+		case FileOffsetType::END: {
+			fseekType = SEEK_END;
+			break;
+		}
+		default: {
+			return false;
+		}
+	}
+	// FIXME: This won't always seek to the correct offset for large files on systems
+	// where fseek takes a 32-bit integer.
+	bool success = (fseek(filePointer, fileOffset, fseekType) == 0);
+	return success;
+}
+#endif
+
+COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadFileHandle& file, int64 fileOffset, FileOffsetType type) {
+	if (file.p == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	return SetFileOffsetInternal(file.p->fileHandle, fileOffset, type);
+#else
+	return SetFileOffsetInternal(file.p->file, fileOffset, type);
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadWriteFileHandle& file, int64 fileOffset, FileOffsetType type) {
+	if (file.p == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	return SetFileOffsetInternal(file.p->fileHandle, fileOffset, type);
+#else
+	return SetFileOffsetInternal(file.p->file, fileOffset, type);
 #endif
 }
 
