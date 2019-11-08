@@ -41,7 +41,7 @@ static HANDLE CreateFileWrapper(const char* filename, DWORD accessMode, DWORD sh
 }
 #endif
 
-bool ReadWholeFile(const char* filename, Array<char>& contents) {
+COMMON_LIBRARY_EXPORTED bool ReadWholeFile(const char* filename, Array<char>& contents) {
 #if _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
@@ -135,7 +135,7 @@ bool ReadWholeFile(const char* filename, Array<char>& contents) {
 #endif
 }
 
-bool WriteWholeFile(const char* filename, const void* contents, size_t length) {
+COMMON_LIBRARY_EXPORTED bool WriteWholeFile(const char* filename, const void* contents, size_t length) {
 #if _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, 0, CREATE_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
