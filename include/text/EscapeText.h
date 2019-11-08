@@ -76,7 +76,7 @@ void escapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& o
 // Any other escape sequences are copied as is without the backslash.
 // Hexadecimal escape sequences with too few digits will be accepted
 // as long as there is at least one hexadecimal digit.
-const char* unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& outText, const char*const stopToken = nullptr, const BackslashEscapeStyle style = BackslashEscapeStyle::C);
+COMMON_LIBRARY_EXPORTED const char* unescapeBackslash(const char* inBegin, const char*const inEnd, Array<char>& outText, const char*const stopToken = nullptr, const BackslashEscapeStyle style = BackslashEscapeStyle::C);
 
 // This function finds the length in bytes of the text string starting at inBegin,
 // and ending with either text matching stopToken, or a zero byte if inEnd is nullptr,
@@ -91,7 +91,7 @@ const char* unescapeBackslash(const char* inBegin, const char*const inEnd, Array
 // so can be used to determine the size of buffer to preallocate, if needed.
 //
 // See unescapeBackslash for specifics on how the escape sequences are interpreted
-size_t backslashEscapedStringLength(const char* inBegin, const char*const inEnd, const char*const stopToken = nullptr, size_t* unescapedLength = nullptr, const BackslashEscapeStyle style = BackslashEscapeStyle::C);
+COMMON_LIBRARY_EXPORTED size_t backslashEscapedStringLength(const char* inBegin, const char*const inEnd, const char*const stopToken = nullptr, size_t* unescapedLength = nullptr, const BackslashEscapeStyle style = BackslashEscapeStyle::C);
 
 } // namespace text
 OUTER_NAMESPACE_END
