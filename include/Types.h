@@ -2,6 +2,7 @@
 
 // This file declares common types and macros for use in other files.
 
+#include <stddef.h>
 #include <stdint.h>
 #include <type_traits>
 
@@ -20,6 +21,16 @@
 
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
+
+#if BUILDING_COMMON_LIBRARY && HAVE_VISIBILITY
+#define COMMON_LIBRARY_EXPORTED __attribute__((__visibility__("default")))
+#elif BUILDING_COMMON_LIBRARY && defined(_MSC_VER)
+#define COMMON_LIBRARY_EXPORTED __declspec(dllexport)
+#elif defined(_MSC_VER)
+#define COMMON_LIBRARY_EXPORTED __declspec(dllimport)
+#else
+#define COMMON_LIBRARY_EXPORTED
+#endif
 
 using int8 = int8_t;
 using int16 = int16_t;
