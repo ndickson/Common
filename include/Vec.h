@@ -956,25 +956,35 @@ template<typename S,typename T,size_t N, typename std::enable_if<std::is_integra
 template<typename SUBCLASS,typename T,size_t N>
 INLINE T NormVec<SUBCLASS,T,N>::makeUnit() {
 	T l2 = BaseType::length2();
-	if (l2 == T(0) || l2 == T(1)) {
-		return l2;
+	T factor;
+	if (l2 != T(0) && l2 != T(1)) {
+		l2 = sqrt(l2);
+		factor = (T(1)/l2);
 	}
-	l2 = sqrt(l2);
-	*(SUBCLASS*)this *= (T(1)/l2);
+	else {
+		// If length squared is zero due to underflow, the vector might still be
+		// of small-but-non-zero length, so still multiply by zero, to ensure
+		// that it's exactly zero, for robustness.
+		factor = l2;
+	}
+	*(SUBCLASS*)this *= factor;
 	return l2;
 }
 template<typename SUBCLASS,typename T,size_t N>
 INLINE T NormVec<SUBCLASS,T,N>::makeLength(T length) {
 	T l2 = BaseType::length2();
-	if (l2 == T(0)) {
-		return l2;
+	T factor;
+	if (l2 != T(0) && l2 != T(1)) {
+		l2 = sqrt(l2);
+		factor = (length/l2);
 	}
-	if (l2 == T(1)) {
-		*(SUBCLASS*)this *= length;
-		return l2;
+	else {
+		// If length squared is zero due to underflow, the vector might still be
+		// of small-but-non-zero length, so still multiply by zero, to ensure
+		// that it's exactly zero, for robustness.
+		factor = l2*length;
 	}
-	l2 = sqrt(l2);
-	*(SUBCLASS*)this *= (length/l2);
+	*(SUBCLASS*)this *= factor;
 	return l2;
 }
 
