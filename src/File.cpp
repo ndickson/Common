@@ -317,12 +317,8 @@ COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filena
 #endif
 }
 
-COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFromFile, size_t lengthToRead) {
-	if (file.p == nullptr || lengthToRead == 0 || dataFromFile == nullptr) {
-		return 0;
-	}
 #ifdef _WIN32
-	HANDLE fileHandle = file.p->fileHandle;
+COMMON_LIBRARY_EXPORTED size_t ReadFileInternal(HANDLE fileHandle, void* dataFromFile, size_t lengthToRead) {
 	assert(fileHandle != INVALID_HANDLE_VALUE);
 	if (lengthToRead < (1ULL<<31)) {
 		// Single read
@@ -351,10 +347,33 @@ COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFr
 		data += partialReadSize;
 	} while (success && remaining != 0);
 	return lengthToRead - size_t(remaining);
+}
 #else
-	FILE* filePointer = file.p->file;
+COMMON_LIBRARY_EXPORTED size_t ReadFileInternal(FILE* filePointer, void* dataFromFile, size_t lengthToRead) {
 	assert(filePointer != nullptr);
 	return fread(dataFromFile, 1, lengthToRead, filePointer);
+}
+#endif
+
+COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFromFile, size_t lengthToRead) {
+	if (file.p == nullptr || lengthToRead == 0 || dataFromFile == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	return ReadFileInternal(file.p->fileHandle, dataFromFile, lengthToRead);
+#else
+	return ReadFileInternal(file.p->file, dataFromFile, lengthToRead);
+#endif
+}
+
+COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadWriteFileHandle& file, void* dataFromFile, size_t lengthToRead) {
+	if (file.p == nullptr || lengthToRead == 0 || dataFromFile == nullptr) {
+		return 0;
+	}
+#ifdef _WIN32
+	return ReadFileInternal(file.p->fileHandle, dataFromFile, lengthToRead);
+#else
+	return ReadFileInternal(file.p->file, dataFromFile, lengthToRead);
 #endif
 }
 
@@ -397,6 +416,18 @@ COMMON_LIBRARY_EXPORTED size_t WriteFile(const WriteFileHandle& file, const void
 	assert(filePointer != nullptr);
 	return fwrite(dataToWrite, 1, lengthToWrite, filePointer);
 #endif
+}
+
+COMMON_LIBRARY_EXPORTED bool FlushFile(const WriteFileHandle& file) {
+	if (file.p == nullptr) {
+		return false;
+	}
+#ifdef _WIN32
+	bool success = (FlushFileBuffers(file.p->fileHandle) != 0);
+#else
+	bool success = (fflush(file.p->file) == 0);
+#endif
+	return success;
 }
 
 COMMON_LIBRARY_EXPORTED uint64 GetFileSize(const FileHandle& file) {
