@@ -117,12 +117,14 @@ class COMMON_LIBRARY_EXPORTED WriteFileHandle : public FileHandle {
 	friend COMMON_LIBRARY_EXPORTED WriteFileHandle CreateFile(const char*);
 	friend COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char*);
 	friend COMMON_LIBRARY_EXPORTED size_t WriteFile(const WriteFileHandle&, const void*, size_t);
+	friend COMMON_LIBRARY_EXPORTED bool FlushFile(const WriteFileHandle& file);
 };
 
 // A ReadWriteFileHandle can read, write, and seek.
 class COMMON_LIBRARY_EXPORTED ReadWriteFileHandle : public WriteFileHandle {
 	using WriteFileHandle::WriteFileHandle;
 	friend COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char*);
+	friend COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadWriteFileHandle&, void*, size_t);
 	friend COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadWriteFileHandle&, int64, FileOffsetType);
 };
 
@@ -147,7 +149,9 @@ COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename);
 COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filename);
 
 COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFromFile, size_t lengthToRead);
+COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadWriteFileHandle& file, void* dataFromFile, size_t lengthToRead);
 COMMON_LIBRARY_EXPORTED size_t WriteFile(const WriteFileHandle& file, const void* dataToWrite, size_t lengthToWrite);
+COMMON_LIBRARY_EXPORTED bool FlushFile(const WriteFileHandle& file);
 
 COMMON_LIBRARY_EXPORTED uint64 GetFileSize(const FileHandle& file);
 
