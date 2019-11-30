@@ -147,7 +147,7 @@ struct NormVec : public BaseVec<SUBCLASS,T,N> {
 
 // Generic, fixed-dimension vector class
 template<typename T,size_t N>
-struct Vec : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>,T,2>,NormVec<Vec<T,N>,T,N>>::type {
+struct Vec : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,N>,T,N>,NormVec<Vec<T,N>,T,N>>::type {
 	T v[N];
 
 	using ThisType = Vec<T,N>;
@@ -311,7 +311,7 @@ public:
 // Specialize Vec for N=3, so that initialization constructors can be constexpr,
 // and to add cross and any other additional functions.
 template<typename T>
-struct Vec<T,3> : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,2>,T,2>,NormVec<Vec<T,3>,T,3>>::type {
+struct Vec<T,3> : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,3>,T,3>,NormVec<Vec<T,3>,T,3>>::type {
 	T v[3];
 
 private:
