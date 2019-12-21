@@ -209,7 +209,7 @@ public:
 #endif
 
 	~InternalHandle() {
-		assert(referenceCount.load(std::memory_order_relaxed) != 0);
+		assert(referenceCount.load(std::memory_order_relaxed) == 0);
 #if _WIN32
 		CloseHandle(fileHandle);
 #else
