@@ -19,9 +19,6 @@
 #define INLINE __attribute__((always_inline))
 #endif
 
-OUTER_NAMESPACE_BEGIN
-COMMON_LIBRARY_NAMESPACE_BEGIN
-
 #if BUILDING_COMMON_LIBRARY && HAVE_VISIBILITY
 #define COMMON_LIBRARY_EXPORTED __attribute__((__visibility__("default")))
 #elif BUILDING_COMMON_LIBRARY && defined(_MSC_VER)
@@ -31,6 +28,9 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 #else
 #define COMMON_LIBRARY_EXPORTED
 #endif
+
+OUTER_NAMESPACE_BEGIN
+COMMON_LIBRARY_NAMESPACE_BEGIN
 
 using int8 = int8_t;
 using int16 = int16_t;
@@ -120,6 +120,12 @@ class BufQueue;
 // property, and realloc can save having to separately move-assign data.
 template<typename T>
 struct is_trivially_relocatable : public std::is_trivially_copyable<T> {};
+
+// std::abs isn't constexpr yet, unfortunately.
+template<typename T>
+[[nodiscard]] constexpr INLINE T abs(T v) {
+	return (v < 0) ? -v : v;
+}
 
 // These are default implementations that do nothing for float, double, or integer types.
 [[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
