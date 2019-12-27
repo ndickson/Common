@@ -18,7 +18,8 @@ namespace math {
 //
 // This may be overkill for most cases, but it's better to
 // be on the safe side, since the whole point of the added precision is
-// improved accuracy.
+// improved accuracy.  Tests suggest that if T is double (53-bit mantissa),
+// this gets accuracy similar to that of a 107-bit mantissa.
 template<typename T>
 constexpr void kahanSumSingle(T& sumHigh, T& sumLow, const T& currentItem) {
 	// This should usually be in descending order of absolute value already.
@@ -28,9 +29,9 @@ constexpr void kahanSumSingle(T& sumHigh, T& sumLow, const T& currentItem) {
 		sumLow
 	};
 	T absValues[3] = {
-		(values[0] >= T(0)) ? values[0] : -values[0],
-		(values[1] >= T(0)) ? values[1] : -values[1],
-		(values[2] >= T(0)) ? values[2] : -values[2]
+		abs(values[0]),
+		abs(values[1]),
+		abs(values[2])
 	};
 
 	// Make values[0] the largest in absolute value.
@@ -56,8 +57,8 @@ constexpr void kahanSumSingle(T& sumHigh, T& sumLow, const T& currentItem) {
 	T smaller = (absValues[1] >= absValues[2]) ? values[2] : values[1];
 	T firstSumHigh = larger + smaller;
 	T firstSumLow = smaller - (firstSumHigh - larger);
-	T absFirstSumHigh = (firstSumHigh >= T(0) ? firstSumHigh : -firstSumHigh);
-	T absFirstSumLow  = (firstSumLow >= T(0)  ? firstSumLow  : -firstSumLow);
+	T absFirstSumHigh = abs(firstSumHigh);
+	T absFirstSumLow  = abs(firstSumLow);
 	if (absFirstSumLow > absFirstSumHigh) {
 		T temp = firstSumHigh;
 		firstSumHigh = firstSumLow;
@@ -70,8 +71,8 @@ constexpr void kahanSumSingle(T& sumHigh, T& sumLow, const T& currentItem) {
 	smaller = (absFirstSumHigh >= absValues[0]) ? values[0] : firstSumHigh;
 	T mainSumHigh = larger + smaller;
 	T mainSumLow = smaller - (mainSumHigh - larger);
-	T absMainSumHigh = (mainSumHigh >= T(0) ? mainSumHigh : -mainSumHigh);
-	T absMainSumLow  = (mainSumLow >= T(0)  ? mainSumLow  : -mainSumLow);
+	T absMainSumHigh = abs(mainSumHigh);
+	T absMainSumLow  = abs(mainSumLow);
 	if (absMainSumLow > absMainSumHigh) {
 		T temp = mainSumHigh;
 		mainSumHigh = mainSumLow;
@@ -81,7 +82,7 @@ constexpr void kahanSumSingle(T& sumHigh, T& sumLow, const T& currentItem) {
 
 	// Add low portions together
 	mainSumLow += firstSumLow;
-	absMainSumLow  = (mainSumLow >= T(0) ? mainSumLow  : -mainSumLow);
+	absMainSumLow  = abs(mainSumLow);
 	if (absMainSumLow > absMainSumHigh) {
 		T temp = mainSumHigh;
 		mainSumHigh = mainSumLow;
