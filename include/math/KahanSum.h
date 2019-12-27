@@ -5,6 +5,8 @@
 OUTER_NAMESPACE_BEGIN
 namespace math {
 
+using namespace COMMON_LIBRARY_NAMESPACE;
+
 // Add a single item to the combination of sumHigh and sumLow,
 // achieving better accuracy in the sum than just a single value
 // for the sum.
