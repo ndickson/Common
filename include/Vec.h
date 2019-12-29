@@ -392,6 +392,81 @@ public:
 };
 
 
+// Specialize Vec for N=4, so that initialization constructors can be constexpr.
+template<typename T>
+struct Vec<T,4> : public std::conditional<std::is_integral<T>::value,BaseVec<Vec<T,4>,T,4>,NormVec<Vec<T,4>,T,4>>::type {
+	T v[4];
+
+private:
+	static constexpr size_t N = 4;
+public:
+	// NOTE: Visual C++ 2017 has issues with the defaulted functions if
+	// ThisType is declared as Vec<T,N>, instead of Vec<T,4>.
+	using ThisType = Vec<T,4>;
+
+	INLINE Vec() = default;
+	constexpr INLINE Vec(const ThisType& that) = default;
+	constexpr INLINE Vec(ThisType&& that) = default;
+
+	template<typename S>
+	explicit constexpr INLINE Vec(const Vec<S,N>& that) : v{T(that[0]), T(that[1]), T(that[2]), T(that[3])} {}
+
+	template<typename S>
+	explicit constexpr INLINE Vec(S that) : v{T(that), T(that), T(that), T(that)} {}
+
+	template<typename S>
+	constexpr INLINE Vec(S v0, S v1, S v2, S v3) : v{T(v0), T(v1), T(v2), T(v3)} {}
+
+	template<typename S>
+	Vec(std::initializer_list<S> list) {
+		// TODO: Ensure that list is the correct size at compile time if possible.
+		size_t n = list.size();
+		if (n > N) {
+			n = N;
+		}
+		for (size_t i = 0; i < n; ++i) {
+			v[i] = T(list.begin()[i]);
+		}
+		for (size_t i = n; i < N; ++i) {
+			v[i] = T(0);
+		}
+	}
+
+	constexpr INLINE ThisType& operator=(const ThisType& that) = default;
+	constexpr INLINE ThisType& operator=(ThisType&& that) = default;
+	template<typename S>
+	INLINE ThisType& operator=(std::initializer_list<S> list) {
+		*this = Vec(list);
+		return *this;
+	}
+
+	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
+		// This static_assert needs to be in a function, because it refers to
+		// ThisType, and the compiler doesn't let you reference the type that's
+		// currently being compiled from class scope.
+		static_assert(std::is_pod<ThisType>::value || !std::is_pod<T>::value, "Vec should be a POD type if T is.");
+
+		return v[i];
+	}
+	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
+		return v[i];
+	}
+
+	[[nodiscard]] constexpr INLINE T* data() {
+		return v;
+	}
+	[[nodiscard]] constexpr INLINE const T* data() const {
+		return v;
+	}
+
+	constexpr INLINE void swap(ThisType& that) {
+		ThisType other(*this);
+		*this = that;
+		that = other;
+	}
+};
+
+
 // +Vec (unary plus operator)
 template<typename T,size_t N>
 [[nodiscard]] constexpr INLINE const Vec<T,N>& operator+(const Vec<T,N>& vector) {
