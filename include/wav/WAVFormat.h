@@ -3,12 +3,12 @@
 // This file contains structures, enumerations, and functions directly
 // related to WAV audio file format.
 
-#include "Types.h"
+#include "../Types.h"
 
 OUTER_NAMESPACE_BEGIN
 namespace wav {
 
-using namespace Common;
+using namespace COMMON_LIBRARY_NAMESPACE;
 
 // These WAV file format structures have members in aligned locations,
 // but just in case, enable struct packing, to avoid any padding bytes.
