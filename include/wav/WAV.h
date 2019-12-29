@@ -4,13 +4,13 @@
 // audio track data from WAV format files into a simple in-memory format.
 // Definitions of the functions are in WAV.cpp
 
-#include "Types.h"
-#include "Array.h"
+#include "../Types.h"
+#include "../Array.h"
 
 OUTER_NAMESPACE_BEGIN
 namespace wav {
 
-using namespace Common;
+using namespace COMMON_LIBRARY_NAMESPACE;
 
 template<typename T>
 struct AudioTracks {
