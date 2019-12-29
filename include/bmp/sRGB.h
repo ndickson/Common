@@ -51,32 +51,36 @@ using namespace COMMON_LIBRARY_NAMESPACE;
 
 [[nodiscard]] static inline uint32 linearToSRGB(const Vec3f& linear) {
 	// Alpha of 1.0
-	return uint32(floatToInt(linearToSRGB(linear[0])))
+	// NOTE: Order is blue, green, red, alpha in sRGB, but red, green, blue in linear.
+	return uint32(floatToInt(linearToSRGB(linear[2])))
 		| (uint32(floatToInt(linearToSRGB(linear[1])))<<8)
-		| (uint32(floatToInt(linearToSRGB(linear[2])))<<16)
+		| (uint32(floatToInt(linearToSRGB(linear[0])))<<16)
 		| 0xFF000000;
 }
 [[nodiscard]] static inline uint32 linearToSRGB(const Vec4f& linear) {
 	// Alpha stays linear
-	return uint32(floatToInt(linearToSRGB(linear[0])))
+	// NOTE: Order is blue, green, red, alpha in sRGB, but red, green, blue, alpha in linear.
+	return uint32(floatToInt(linearToSRGB(linear[2])))
 		| (uint32(floatToInt(linearToSRGB(linear[1])))<<8)
-		| (uint32(floatToInt(linearToSRGB(linear[2])))<<16)
+		| (uint32(floatToInt(linearToSRGB(linear[0])))<<16)
 		| (uint32(floatToInt(linear[3]))<<24);
 }
 [[nodiscard]] static inline uint32 linearToSRGB(const Vec3f& linear, const float alpha) {
 	// Alpha stays linear
-	return uint32(floatToInt(linearToSRGB(linear[0])))
+	// NOTE: Order is blue, green, red, alpha in sRGB, but red, green, blue in linear.
+	return uint32(floatToInt(linearToSRGB(linear[2])))
 		| (uint32(floatToInt(linearToSRGB(linear[1])))<<8)
-		| (uint32(floatToInt(linearToSRGB(linear[2])))<<16)
+		| (uint32(floatToInt(linearToSRGB(linear[0])))<<16)
 		| (uint32(floatToInt(alpha))<<24);
 }
 
 [[nodiscard]] static inline Vec4f sRGBToLinear(uint32 sRGB) {
-	// Alpha is linear
+	// Alpha stays linear
+	// NOTE: Order is blue, green, red, alpha in sRGB, but red, green, blue, alpha in linear.
 	return Vec4f(
-		sRGBToLinear(intToFloat(uint8(sRGB))),
-		sRGBToLinear(intToFloat(uint8(sRGB>>8))),
 		sRGBToLinear(intToFloat(uint8(sRGB>>16))),
+		sRGBToLinear(intToFloat(uint8(sRGB>>8))),
+		sRGBToLinear(intToFloat(uint8(sRGB))),
 		intToFloat(uint8(sRGB>>24))
 	);
 }
