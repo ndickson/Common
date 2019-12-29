@@ -573,7 +573,7 @@ static uint64 SetFileOffsetInternal(FILE* filePointer, int64 fileOffset, FileOff
 
 COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadFileHandle& file, int64 fileOffset, FileOffsetType type) {
 	if (file.p == nullptr) {
-		return 0;
+		return false;
 	}
 #ifdef _WIN32
 	return SetFileOffsetInternal(file.p->fileHandle, fileOffset, type);
@@ -584,7 +584,7 @@ COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadFileHandle& file, int64 fil
 
 COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadWriteFileHandle& file, int64 fileOffset, FileOffsetType type) {
 	if (file.p == nullptr) {
-		return 0;
+		return false;
 	}
 #ifdef _WIN32
 	return SetFileOffsetInternal(file.p->fileHandle, fileOffset, type);
