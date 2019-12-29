@@ -50,6 +50,8 @@ template<typename T>
 using Vec2 = Vec<T,2>;
 template<typename T>
 using Vec3 = Vec<T,3>;
+template<typename T>
+using Vec4 = Vec<T,4>;
 
 using Vec2f = Vec2<float>;
 using Vec2d = Vec2<double>;
@@ -59,6 +61,10 @@ using Vec3f = Vec3<float>;
 using Vec3d = Vec3<double>;
 using Vec3i = Vec3<int32>;
 using Vec3I = Vec3<int64>;
+using Vec4f = Vec4<float>;
+using Vec4d = Vec4<double>;
+using Vec4i = Vec4<int32>;
+using Vec4I = Vec4<int64>;
 
 
 template<typename T,size_t NROWS,size_t NCOLS=NROWS,bool ROW_MAJOR=true>
