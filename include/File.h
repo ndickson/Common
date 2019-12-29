@@ -148,16 +148,26 @@ COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename);
 // already exist
 COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filename);
 
+// Returns the number of bytes read
 COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadFileHandle& file, void* dataFromFile, size_t lengthToRead);
+// Returns the number of bytes read
 COMMON_LIBRARY_EXPORTED size_t ReadFile(const ReadWriteFileHandle& file, void* dataFromFile, size_t lengthToRead);
+
+// Returns the number of bytes written
 COMMON_LIBRARY_EXPORTED size_t WriteFile(const WriteFileHandle& file, const void* dataToWrite, size_t lengthToWrite);
+
+// Returns true upon success
 COMMON_LIBRARY_EXPORTED bool FlushFile(const WriteFileHandle& file);
 
+// Returns size in bytes
 COMMON_LIBRARY_EXPORTED uint64 GetFileSize(const FileHandle& file);
 
+// Returns the current file offset in bytes
 COMMON_LIBRARY_EXPORTED uint64 GetFileOffset(const FileHandle& file);
 
+// Returns true upon success
 COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadFileHandle& file, int64 fileOffset, FileOffsetType type = FileOffsetType::ABSOLUTE);
+// Returns true upon success
 COMMON_LIBRARY_EXPORTED bool SetFileOffset(const ReadWriteFileHandle& file, int64 fileOffset, FileOffsetType type = FileOffsetType::ABSOLUTE);
 
 COMMON_LIBRARY_NAMESPACE_END
