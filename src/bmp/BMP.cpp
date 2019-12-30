@@ -106,7 +106,7 @@ bool ReadBMPFile(const char* filename, Array<uint32>& pixels, size_t& width, siz
 					(uint32(fileData[1])<<8) |
 					(uint32(fileData[2])<<16) |
 					(fileHasAlpha ? (uint32(fileData[3])<<24) : 0xFF000000);
-				fileData += pixelDataBytes;
+				fileData += bytesPerPixel;
 
 				pixels[outputLineStart + (reverseHorizontal ? (size_t(fileWidth)-1-pixeli) : pixeli)] = pixelValue;
 			}
@@ -198,7 +198,7 @@ bool WriteBMPFile(const char* filename, const uint32* pixels, size_t width, size
 			fileData[0] = uint8(pixelValue);
 			fileData[1] = uint8(pixelValue>>8);
 			fileData[2] = uint8(pixelValue>>16);
-			fileData += pixelDataBytes;
+			fileData += bytesPerPixel;
 		}
 
 		// Write a scan line at a time
