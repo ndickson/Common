@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Bits.h"
 #include "Types.h"
 #include "Vec.h"
 #include <stdint.h>
@@ -7,10 +8,6 @@
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
 
-[[nodiscard]] constexpr INLINE uint64 rotateLeft(const uint64 x, const int bits) {
-	// Hopefully the compiler realizes that there's a single x86-64 instruction for this.
-	return (x << bits) | (x >> (64-bits));
-}
 template<size_t N>
 [[nodiscard]] constexpr INLINE Vec<uint64,N> rotateLeft(const Vec<uint64,N>& x, const int bits) {
 	// Hopefully the compiler realizes that there's a single x86-64 instruction for this.
