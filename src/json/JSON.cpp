@@ -23,6 +23,11 @@ static inline CHAR_ITER_T skipWhitespace(CHAR_ITER_T p, const END_T end) {
 	return p;
 }
 
+template<typename CHAR_T>
+static inline bool isJSONWordEnd(CHAR_T c) {
+	return c <= ' ' || c == ',' || c == ':' || c == ']' || c == '}' || c == '[' || c == '{' || c == '\"' || c == '\'';
+}
+
 static const char* parseBinaryJSON(const char* begin, const char* end, std::unique_ptr<Value>& output) {
 	// FIXME: Implement this!!!
 	return begin;
@@ -242,102 +247,17 @@ static const char* parseTextJSON(const char* begin, const char* end, std::unique
 		// the string ended, as opposed to reaching the end of the input.
 		return stringEnd + (stringEnd != end);
 	}
-	if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.') {
-		// Valid JSON numbers can't start with '+', '.',
-		// or '0' (unless '0' is the only character of the number),
-		// but accept them all anyway, to be more permissive.
 
-		bool stillValid = true;
-		const char* numberEnd = begin;
-		if (c == '+' || c == '-') {
-			// Move the end past the sign character.
-			++numberEnd;
-			if (numberEnd == end) {
-				stillValid = false;
-			}
-			else {
-				c = *numberEnd;
-				if (!(c >= '0' && c <= '9') && c != '.') {
-					stillValid = false;
-				}
-			}
-		}
-		// Any sign character is dealt with already.
-		bool hasIntegerPart = false;
-		if (stillValid) {
-			// Handle integer part.
-			if (c >= '0' && c <= '9') {
-				hasIntegerPart = true;
-				++numberEnd;
-				while (numberEnd != end && (*numberEnd >= '0' && *numberEnd <= '9')) {
-					++numberEnd;
-				}
-				if (numberEnd != end) {
-					c = *numberEnd;
-				}
-			}
-			// Handle decimal point.
-			if (c == '.') {
-				++numberEnd;
-				if (numberEnd != end) {
-					c = *numberEnd;
-				}
-				if (!hasIntegerPart && (numberEnd == end || !(c >= '0' && c <= '9'))) {
-					// If there's a dot with no integer part, the next thing *must* be a digit.
-					stillValid = false;
-				}
-			}
-		}
-
-		bool hasExponent = false;
-		if (stillValid && numberEnd != end) {
-			// Handle fractional part.
-			while (numberEnd != end && (*numberEnd >= '0' && *numberEnd <= '9')) {
-				++numberEnd;
-			}
-			if (numberEnd != end) {
-				c = *numberEnd;
-				if ((c|char(0x20)) == 'e') {
-					hasExponent = true;
-					++numberEnd;
-					if (numberEnd == end) {
-						stillValid = false;
-					}
-					else {
-						c = *numberEnd;
-						if (c == '+' || c == '-') {
-							++numberEnd;
-							if (numberEnd == end) {
-								stillValid = false;
-							}
-							else {
-								c = *numberEnd;
-							}
-						}
-					}
-					if (stillValid && !(c >= '0' && c <= '9')) {
-						stillValid = false;
-					}
-				}
-			}
-		}
-		if (stillValid && hasExponent) {
-			++numberEnd;
-			while (numberEnd != end && (*numberEnd >= '0' && *numberEnd <= '9')) {
-				++numberEnd;
-			}
-			if (numberEnd != end) {
-				c = *numberEnd;
-			}
-		}
-		if (stillValid && numberEnd != end) {
-			// If the character following the number isn't whitespace and isn't
-			// a separator, end, or beginning of something, give up.
-			if (c > ' ' && c != ',' && c != ':' && c != ']' && c != '}' && c != '[' && c != '{' && c != '\"' && c != '\'') {
-				stillValid = false;
-			}
-		}
-		if (stillValid) {
+	// text::textToDouble accepts more numbers than valid JSON,
+	// e.g. valid JSON doesn't allow numbers starting with '+' or '.',
+	// and doesn't allow "infinity" or "NaN", but
+	// it's okay to be more permissive here.
+	double doubleValue;
+	size_t numberLength = text::textToDouble(begin, end, doubleValue);
+	if (numberLength != 0) {
+		const char*const numberEnd = begin + numberLength;
+		// Make sure that the number ends with a valid end.
+		if (numberEnd == end || isJSONWordEnd(*numberEnd)) {
 			NumberValue* numberValue = new NumberValue();
 			output.reset(numberValue);
 
@@ -349,45 +269,101 @@ static const char* parseTextJSON(const char* begin, const char* end, std::unique
 			}
 			numberValue->text[numberTextLength] = 0;
 
-			// FIXME: Compute the number value and write it into numberValue->value!!!
+			// Compute the number value and write it into numberValue->value
+			numberValue->value = doubleValue;
 
 			return numberEnd;
 		}
 	}
-	else {
-		char cLower = (c | char(0x20));
-		if (cLower == 'f') {
-			// Check for "false".
-			if ((end - begin) >= 5 &&
-				(begin[1]|char(0x20)) == 'a' &&
-				(begin[2]|char(0x20)) == 'l' &&
-				(begin[3]|char(0x20)) == 's' &&
-				(begin[4]|char(0x20)) == 'e'
-			) {
-				output.reset(new SpecialValue(Special::FALSE_));
-				return begin+5;
-			}
+
+	char cLower = (c | char(0x20));
+	if (cLower == 'f') {
+		// Check for "false".
+		if ((end - begin) >= 5 &&
+			(begin[1]|char(0x20)) == 'a' &&
+			(begin[2]|char(0x20)) == 'l' &&
+			(begin[3]|char(0x20)) == 's' &&
+			(begin[4]|char(0x20)) == 'e' &&
+			(begin+5 == end || isJSONWordEnd(begin[5]))
+		) {
+			output.reset(new SpecialValue(Special::FALSE_));
+			return begin+5;
 		}
-		else if (cLower == 't') {
-			// Check for "true".
-			if ((end - begin) >= 4 &&
-				(begin[1]|char(0x20)) == 'r' &&
-				(begin[2]|char(0x20)) == 'u' &&
-				(begin[3]|char(0x20)) == 'e'
-			) {
-				output.reset(new SpecialValue(Special::TRUE_));
-				return begin+4;
-			}
+	}
+	else if (cLower == 't') {
+		// Check for "true".
+		if ((end - begin) >= 4 &&
+			(begin[1]|char(0x20)) == 'r' &&
+			(begin[2]|char(0x20)) == 'u' &&
+			(begin[3]|char(0x20)) == 'e' &&
+			(begin+4 == end || isJSONWordEnd(begin[4]))
+		) {
+			output.reset(new SpecialValue(Special::TRUE_));
+			return begin+4;
 		}
-		else if (cLower == 'n') {
-			// Check for "null".
-			if ((end - begin) >= 4 &&
-				(begin[1]|char(0x20)) == 'u' &&
-				(begin[2]|char(0x20)) == 'l' &&
-				(begin[3]|char(0x20)) == 'l'
+	}
+	else if (cLower == 'n') {
+		// Check for "null".
+		if ((end - begin) >= 4 &&
+			(begin[1]|char(0x20)) == 'u' &&
+			(begin[2]|char(0x20)) == 'l' &&
+			(begin[3]|char(0x20)) == 'l' &&
+			(begin+4 == end || isJSONWordEnd(begin[4]))
+		) {
+			output.reset(new SpecialValue(Special::NULL_));
+			return begin+4;
+		}
+		// Check for "nan" (or any capitlization thereof).
+		if ((end - begin) >= 3 && 
+			(begin[1]|char(0x20)) == 'a' &&
+			(begin[2]|char(0x20)) == 'n' &&
+			(begin+3 == end || isJSONWordEnd(begin[3]))
+		) {
+			NumberValue* numberValue = new NumberValue();
+			output.reset(numberValue);
+			numberValue->text.setSize(4);
+			numberValue->text[0] = begin[0];
+			numberValue->text[1] = begin[1];
+			numberValue->text[2] = begin[2];
+			numberValue->text[3] = 0;
+			numberValue->value = std::numeric_limits<double>::quiet_NaN();
+			return begin+3;
+		}
+	}
+	else if (cLower == 'i') {
+		// Check for "inf" or "infinity".
+		if ((end - begin) >= 3 && 
+			(begin[1]|char(0x20)) == 'n' &&
+			(begin[2]|char(0x20)) == 'f'
+		) {
+			if (begin+3 == end || isJSONWordEnd(begin[3])) {
+				NumberValue* numberValue = new NumberValue();
+				output.reset(numberValue);
+				numberValue->text.setSize(4);
+				numberValue->text[0] = begin[0];
+				numberValue->text[1] = begin[1];
+				numberValue->text[2] = begin[2];
+				numberValue->text[3] = 0;
+				numberValue->value = std::numeric_limits<double>::infinity();
+				return begin+3;
+			}
+			else if ((end - begin) >= 8 && 
+				(begin[3]|char(0x20)) == 'i' &&
+				(begin[4]|char(0x20)) == 'n' &&
+				(begin[5]|char(0x20)) == 'i' &&
+				(begin[6]|char(0x20)) == 't' &&
+				(begin[7]|char(0x20)) == 'y' &&
+				(begin+8 == end || isJSONWordEnd(begin[8]))
 			) {
-				output.reset(new SpecialValue(Special::NULL_));
-				return begin+4;
+				NumberValue* numberValue = new NumberValue();
+				output.reset(numberValue);
+				numberValue->text.setSize(8);
+				for (size_t i = 0; i < 8; ++i) {
+					numberValue->text[i] = begin[i];
+				}
+				numberValue->text[8] = 0;
+				numberValue->value = std::numeric_limits<double>::infinity();
+				return begin+8;
 			}
 		}
 	}
@@ -405,7 +381,7 @@ static const char* parseTextJSON(const char* begin, const char* end, std::unique
 			break;
 		}
 		c = *textEnd;
-	} while (c > ' ' && c != ',' && c != ':' && c != ']' && c != '}' && c != '[' && c != '{' && c != '\"' && c != '\'');
+	} while (!isJSONWordEnd(c));
 
 	StringValue* string = new StringValue();
 	output.reset(string);
@@ -449,6 +425,218 @@ std::unique_ptr<Value> ReadJSONFile(const char* filename) {
 	}
 	parseTextJSON(data, end, value);
 	return std::move(value);
+}
+
+static void generateBinaryJSON(const Value& value, Array<char>& output) {
+
+}
+
+static void generateTextJSON(const Value& value, Array<char>& output, size_t firstLineTabs, size_t nestingLevel);
+
+static inline void addIndent(Array<char>& output, size_t numTabs) {
+	if (numTabs != 0) {
+		size_t origSize = output.size();
+		output.setSize(origSize + numTabs);
+		for (size_t tabi = 0; tabi < numTabs; ++tabi) {
+			output[origSize + tabi] = '\t';
+		}
+	}
+}
+static inline void generateNumberText(int8 v, Array<char>& output) {
+	text::integerToText(int64(v), output);
+}
+static inline void generateNumberText(int16 v, Array<char>& output) {
+	text::integerToText(int64(v), output);
+}
+static inline void generateNumberText(int32 v, Array<char>& output) {
+	text::integerToText(int64(v), output);
+}
+static inline void generateNumberText(int64 v, Array<char>& output) {
+	text::integerToText(v, output);
+}
+static inline void generateNumberText(float v, Array<char>& output) {
+	text::floatToText(v, output);
+}
+static inline void generateNumberText(double v, Array<char>& output) {
+	text::doubleToText(v, output);
+}
+
+static void generateTextJSONString(const StringValue& stringValue, Array<char>& output) {
+	assert(stringValue.type == Type::STRING);
+	output.append('\"');
+	text::escapeBackslash(stringValue.text.begin(), nullptr, output, text::BackslashEscapeStyle::JSON);
+	output.append('\"');
+}
+static inline void generateTextJSONSpecial(const Special value, Array<char>& output) {
+	constexpr const char* strings[3] = {
+		"false", "true", "null"
+	};
+	constexpr size_t lengths[3] = {
+		5, 4, 4
+	};
+	size_t index = size_t(value);
+	const char* string = strings[index];
+	size_t length = lengths[index];
+	size_t n = output.size();
+	output.setSize(n + length);
+	for (size_t i = 0; i < length; ++i) {
+		output[n+i] = string[i];
+	}
+}
+static void generateTextJSONObject(const ObjectValue& objectValue, Array<char>& output, size_t firstLineTabs = 0, size_t nestingLevel = 0) {
+	assert(objectValue.type == Type::OBJECT);
+	assert(objectValue.names.size() == objectValue.values.size());
+
+	// Add indent
+	addIndent(output, firstLineTabs);
+
+	size_t n = objectValue.names.size();
+	output.append('{');
+	output.append('\n');
+	for (size_t i = 0; i < n; ++i) {
+		addIndent(output, nestingLevel+1);
+		generateTextJSONString(objectValue.names[i], output);
+		output.append(':');
+		auto& valuePtr = objectValue.values[i];
+		if (valuePtr.get() != nullptr) {
+			generateTextJSON(*valuePtr, output, 1, nestingLevel+1);
+		}
+		else {
+			output.append('\t');
+			generateTextJSONSpecial(Special::NULL_, output);
+		}
+		output.append(',');
+		output.append('\n');
+	}
+	addIndent(output, nestingLevel);
+	output.append('}');
+}
+static void generateTextJSONArrayAny(const ArrayValueAny& arrayValue, Array<char>& output, size_t firstLineTabs = 0, size_t nestingLevel = 0) {
+	assert(arrayValue.type == Type::ARRAY);
+
+	// Add indent
+	addIndent(output, firstLineTabs);
+
+	size_t n = arrayValue.values.size();
+	output.append('[');
+	output.append('\n');
+	for (size_t i = 0; i < n; ++i) {
+		auto& valuePtr = arrayValue.values[i];
+		if (valuePtr.get() != nullptr) {
+			generateTextJSON(*valuePtr, output, nestingLevel+1, nestingLevel+1);
+		}
+		else {
+			addIndent(output, nestingLevel+1);
+			generateTextJSONSpecial(Special::NULL_, output);
+		}
+		output.append(',');
+		output.append('\n');
+	}
+	addIndent(output, nestingLevel);
+	output.append(']');
+}
+template<typename T>
+static void generateTextJSONArray(const Array<T>& array, Array<char>& output) {
+	size_t n = array.size();
+	output.append('[');
+	if (n > 0) {
+		generateNumberText(array[0], output);
+		for (size_t i = 0; i < n; ++i) {
+			output.append(',');
+			output.append(' ');
+			generateNumberText(array[i], output);
+		}
+	}
+	output.append(']');
+}
+static void generateTextJSONNumber(const NumberValue& numberValue, Array<char>& output) {
+	if (numberValue.text.size() > 0) {
+		size_t length = numberValue.text.size();
+		size_t n = output.size();
+		output.setSize(n + length);
+		for (size_t i = 0; i < length; ++i) {
+			output[n + i] = numberValue.text[i];
+		}
+		return;
+	}
+
+	text::doubleToText(numberValue.value, output);
+}
+static void generateTextJSON(const Value& value, Array<char>& output, size_t firstLineTabs, size_t nestingLevel) {
+	// Add indent
+	addIndent(output, firstLineTabs);
+
+	switch (value.type) {
+		case Type::OBJECT: {
+			const ObjectValue& objectValue = static_cast<const ObjectValue&>(value);
+			generateTextJSONObject(objectValue, output, 0, nestingLevel);
+			break;
+		}
+		case Type::ARRAY: {
+			const ArrayValueAny& arrayValue = static_cast<const ArrayValueAny&>(value);
+			generateTextJSONArrayAny(arrayValue, output, 0, nestingLevel);
+			break;
+		}
+		case Type::STRING: {
+			const StringValue& stringValue = static_cast<const StringValue&>(value);
+			generateTextJSONString(stringValue, output);
+			break;
+		}
+		case Type::NUMBER: {
+			const NumberValue& numberValue = static_cast<const NumberValue&>(value);
+			generateTextJSONNumber(numberValue, output);
+			break;
+		}
+		case Type::SPECIAL: {
+			const SpecialValue& specialValue = static_cast<const SpecialValue&>(value);
+			generateTextJSONSpecial(specialValue.value, output);
+			break;
+		}
+		case Type::INT8ARRAY: {
+			const ArrayValue<int8>& arrayValue = static_cast<const ArrayValue<int8>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+		case Type::INT16ARRAY: {
+			const ArrayValue<int16>& arrayValue = static_cast<const ArrayValue<int16>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+		case Type::INT32ARRAY: {
+			const ArrayValue<int32>& arrayValue = static_cast<const ArrayValue<int32>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+		case Type::INT64ARRAY: {
+			const ArrayValue<int64>& arrayValue = static_cast<const ArrayValue<int64>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+		case Type::FLOAT32ARRAY: {
+			const ArrayValue<float>& arrayValue = static_cast<const ArrayValue<float>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+		case Type::FLOAT64ARRAY: {
+			const ArrayValue<double>& arrayValue = static_cast<const ArrayValue<double>&>(value);
+			generateTextJSONArray(arrayValue.values, output);
+			break;
+		}
+	}
+}
+
+bool WriteJSONFile(const char* filename, const Value& value, bool binary) {
+	Array<char> contents;
+	if (binary) {
+		generateBinaryJSON(value, contents);
+	}
+	else {
+		generateTextJSON(value, contents, 0, 0);
+		contents.append('\n');
+	}
+
+	bool success = WriteWholeFile(filename, contents.data(), contents.size());
+	return success;
 }
 
 } // namespace json
