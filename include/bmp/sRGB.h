@@ -7,7 +7,7 @@
 #include "../Types.h"
 #include "../Vec.h"
 
-#include <math.h>
+#include <cmath>
 
 OUTER_NAMESPACE_BEGIN
 namespace bmp {
@@ -21,7 +21,7 @@ using namespace COMMON_LIBRARY_NAMESPACE;
 		return T(323.0/25.0)*linear;
 	}
 	else {
-		return (T(211.0)*pow(linear, T(5.0/12.0)) - T(11.0))/T(200.0);
+		return (T(211.0)*std::pow(linear, T(5.0/12.0)) - T(11.0))/T(200.0);
 	}
 }
 
@@ -31,7 +31,7 @@ using namespace COMMON_LIBRARY_NAMESPACE;
 		return T(25.0/323.0)*sRGB;
 	}
 	else {
-		return pow((T(200.0)*sRGB + T(11.0))/T(211.0), T(12.0/5.0));
+		return std::pow((T(200.0)*sRGB + T(11.0))/T(211.0), T(12.0/5.0));
 	}
 }
 
