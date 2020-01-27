@@ -492,10 +492,10 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 		assert(prev >> localTopBit == 1);
 		denominator.append(1);
 
-		// We added localTopBit powers of two to the denominator, which
-		// is equivalent to removing that many powers of two to the quotient,
+		// We added (32-localTopBit) powers of two to the denominator, which
+		// is equivalent to removing that many powers of two from the quotient,
 		// so we need to add them back to compensate.
-		binaryExponent += localTopBit;
+		binaryExponent += (32-localTopBit);
 	}
 
 	bool roundUpDenominator = false;
@@ -508,9 +508,9 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 	const uint64 simpleDenominatorRoundDown = (uint64(1)<<32) | uint64(denominator[denominator.size()-2]);
 	const uint64 simpleDenominatorRoundUp = simpleDenominatorRoundDown + uint64(roundUpDenominator);
 
-	if (integer.size() > denominator.size() + 1) {
+	if (integer.size() > denominator.size()) {
 		// Add zeros to low blocks of denominator.
-		size_t numBlocksToAdd = integer.size() - denominator.size() - 1;
+		size_t numBlocksToAdd = integer.size() - denominator.size();
 		size_t origSize = denominator.size();
 		denominator.setSize(origSize + numBlocksToAdd);
 		for (size_t i = denominator.size()-1; i >= numBlocksToAdd; --i) {
@@ -558,9 +558,9 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 			}
 		}
 
-		if (integer.size() <= denominator.size()) {
+		if (integer.size() < denominator.size()) {
 			// Add zeros to low blocks of integer.
-			size_t numBlocksToAdd = denominator.size()+1 - integer.size();
+			size_t numBlocksToAdd = denominator.size() - integer.size();
 			integer.setSize(integer.size() + numBlocksToAdd);
 			for (size_t i = integer.size()-1; i >= numBlocksToAdd; --i) {
 				integer[i] = integer[i-numBlocksToAdd];
@@ -587,7 +587,12 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 		uint32 localQuotient = uint32(localNumerator / simpleDenominatorRoundUp);
 
 		// Add localQuotient to quotient.
-		quotient[0] += localQuotient;
+		if (quotient.size() == 0) {
+			quotient.append(localQuotient);
+		}
+		else {
+			quotient[0] += localQuotient;
+		}
 		uint32 carry = (quotient[0] < localQuotient);
 		for (size_t i = 1, n = quotient.size(); carry && i < n; ++i) {
 			++quotient[i];
@@ -698,11 +703,14 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 
 		if (certainRoundDown || certainRoundUp) {
 			uint64 mainBits = uint64(quotient[numBlocks-1]);
+			binaryExponent += 32*(numBlocks-1);
 			if (localTopBit+1 > bits) {
 				mainBits >>= (localTopBit+1-bits);
+				binaryExponent += (localTopBit+1-bits);
 			}
 			else if (localTopBit+1 < bits) {
 				mainBits <<= (bits-(localTopBit+1));
+				binaryExponent -= (bits-(localTopBit+1));
 				// Bounds check in case numerator ran out on first iteration.
 				if (numBlocks >= 2) {
 					uint64 next = uint64(quotient[numBlocks-2]);
@@ -726,6 +734,7 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 				++mainBits;
 			}
 
+			binaryExponent += (bits-1);
 			uint64 mantissa = (mainBits<<(53-bits));
 			// If the rounding rounded up to the next power of two,
 			// we need to be careful.
