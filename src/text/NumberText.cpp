@@ -641,7 +641,7 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 				size_t parityBitNumber = roundingBitNumber+1;
 				size_t parityBitBlock = (parityBitNumber >> 5);
 				size_t parityBitIndex = (parityBitNumber & 0x1F);
-				bool odd = (quotient[parityBitNumber] & (uint32(1)<<parityBitIndex)) != 0;
+				bool odd = (quotient[parityBitBlock] & (uint32(1)<<parityBitIndex)) != 0;
 				if (odd) {
 					// Round up to even, whether half or above.
 					certainRoundUp = true;
