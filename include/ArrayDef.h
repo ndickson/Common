@@ -7,6 +7,7 @@
 #include "Types.h"
 #include "Array.h"
 
+#include <new> // For placement new operator
 #include <stdlib.h> // For free and realloc
 #include <type_traits>
 
