@@ -497,6 +497,7 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 		// so we need to add them back to compensate.
 		binaryExponent += (32-localTopBit);
 	}
+	assert(denominator.last() == 1);
 
 	bool roundUpDenominator = false;
 	for (size_t i = 0, n = denominator.size(); i < n-2; ++i) {
@@ -602,6 +603,20 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 			quotient.append(1);
 		}
 
+		// At this point, localQuotient is below the true (shifted) local quotient by less than 2:
+		// trueLocalQuotient - localQuotient
+		// = n/d - floor(floor(n)/ceil(d))
+		// < n/d - floor(n)/ceil(d) + 1
+		// < n/d - (n-1)/(d+1) + 1
+		// = (n(d+1) - nd)/(d(d+1)) + 1/(d+1) + 1
+		// = n/(d(d+1)) + 1/(d+1) + 1
+		// < (d^2)/(d(d+1)) + 1/(d+1) + 1; because n < d^2
+		// = d/(d+1) + 1/(d+1) + 1
+		// = (d+1)/(d+1) + 1
+		// = 2
+		// If we check whether the remainder is at least denominator afterward,
+		// we can reduce this difference to be less than 1.
+
 		// Subtract localQuotient*denominator from integer.
 		carry = 0;
 		for (size_t i = 0, n = denominator.size(); i < n; ++i) {
@@ -612,14 +627,47 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 			integer[i] = newInteger;
 			carry = uint32(product>>32) + (newInteger > origInteger);
 		}
-		assert(integer.last() >= carry);
-		integer.last() -= carry;
+		assert(carry == 0);
+
+		// If integer is still greater than or equal to denominator,
+		// subtract denominator from integer and add 1 to quotient.
+		// This allows for robust handling of the case where integer is
+		// an exact multiple of denominator, but not of simpleDenominatorRoundUp,
+		// and round half to even behaviour rounding up comes into play.
+		bool isIntegerLessThanDenominator = false;
+		for (size_t i = denominator.size(); i > 0; ) {
+			--i;
+			isIntegerLessThanDenominator = integer[i] < denominator[i];
+			if (integer[i] != denominator[i]) {
+				break;
+			}
+		}
+		if (!isIntegerLessThanDenominator) {
+			// There's room to subtract another denominator from integer,
+			// so do that and add 1 to quotient.
+			carry = 0;
+			for (size_t i = 0, n = denominator.size(); i < n; ++i) {
+				uint64 sum = uint64(denominator[i]) + uint64(carry);
+				uint32 origInteger = integer[i];
+				uint32 newInteger = origInteger - uint32(sum);
+				integer[i] = newInteger;
+				carry = uint32(sum>>32) + (newInteger > origInteger);
+			}
+			assert(carry == 0);
+			carry = 1;
+			for (size_t i = 0, n = quotient.size(); carry && i < n; ++i) {
+				++quotient[i];
+				carry = (quotient[i] == 0);
+			}
+			if (carry) {
+				quotient.append(1);
+			}
+		}
 
 		// Remove zeros at the top of integer.
 		while (integer.size() > 0 && integer.last() == 0) {
 			integer.setSize(integer.size()-1);
 		}
-
 
 		bool certainRoundDown = false;
 		bool certainRoundUp = false;
@@ -658,47 +706,22 @@ static size_t textToDoubleWithPrecision(const char* text, const char*const end, 
 				}
 			}
 		}
-		else {
-			// The +6 is just so that most of the time, more bits aren't needed,
-			// and so that if bits is 24, one iteration is often enough.
-			// It also needs to be at least a couple, so that there's a rounding bit
-			// and so that the margin of error is below the rounding bit.
-			if (numBits >= bits + 6) {
-				// localQuotient is below the true (shifted) local quotient by less than 2:
-				// trueLocalQuotient - localQuotient
-				// = n/d - floor(floor(n)/ceil(d))
-				// < n/d - floor(n)/ceil(d) + 1
-				// < n/d - (n-1)/(d+1) + 1
-				// = (n(d+1) - nd)/(d(d+1)) + 1/(d+1) + 1
-				// = n/(d(d+1)) + 1/(d+1) + 1
-				// < (d^2)/(d(d+1)) + 1/(d+1) + 1; because n < d^2
-				// = d/(d+1) + 1/(d+1) + 1
-				// = (d+1)/(d+1) + 1
-				// = 2
-				// This gives us an upper bound with which to check for convergence.
-				// This means that the true quotient is above quotient and
-				// strictly less than quotient+2.
+		// The +1 is so that there's a valid rounding bit.
+		else if (numBits >= bits + 1) {
+			// As described above, localQuotient is below the true (shifted)
+			// local quotient by less than 2, and if it was below by 1 or more,
+			// we added an extra 1, so it's now below by less than 1.
+			// This gives us an upper bound with which to check for convergence.
+			// This means that the true quotient is strictly above quotient and
+			// strictly below quotient+1.
 
-				// If the rounding bit is one, it's definitely rounding up,
-				// since there's still a remainder, so we're done.
-				if (quotient[roundingBitBlock] & (uint32(1)<<roundingBitIndex)) {
-					certainRoundUp = true;
-				}
-				else {
-					// If the rounding bit and the bits below are at most
-					// 01111...11110, it's definitely rounding down, since
-					// the true quotient isn't 2 more than quotient, so we're done.
-					uint32 mask = (uint32(1)<<roundingBitIndex)-1;
-					certainRoundDown = (quotient[roundingBitBlock] & mask) != mask;
-					while (!certainRoundDown && (roundingBitBlock > 0)) {
-						--roundingBitBlock;
-						certainRoundDown = (quotient[roundingBitBlock] != ~uint32(0));
-					}
-
-					// That means, the only ambiguous case left is
-					// 01111...11111, in which case, we keep iterating.
-				}
-			}
+			// If the rounding bit is one, it's definitely rounding up,
+			// since there's still a remainder, so we're done.
+			// If the rounding bit is zero, the true quotient isn't 1 more than
+			// quotient, so it can never end up being flipped to 1,
+			// even if the current bits below are all 1.
+			certainRoundUp = (quotient[roundingBitBlock] & (uint32(1)<<roundingBitIndex));
+			certainRoundDown = !certainRoundUp;
 		}
 
 		if (certainRoundDown || certainRoundUp) {
