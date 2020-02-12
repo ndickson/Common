@@ -1527,8 +1527,8 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 			}
 
 			if (quotientDigits.size() == 9 && quotientDigits[0] == 0) {
-				// High digit is zero, so subtract 1 from quotientExponent
-				// and shift quotientDigits over by 1.
+				// High digit is zero on first iteration, so subtract 1
+				// from quotientExponent and shift quotientDigits over by 1.
 				for (size_t i = 0; i < 8; ++i) {
 					quotientDigits[i] = quotientDigits[i+1];
 				}
@@ -1545,7 +1545,13 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 		}
 
 		char operator[](int32 digiti) {
-			digiti -= quotientExponent;
+			// quotientDigits has the high digit first, and
+			// its unit is worth 10^quotientExponent.
+			digiti = quotientExponent - digiti;
+			if (digiti < 0) {
+				// Digits higher than the highest digit are zero.
+				return 0;
+			}
 			while (digiti >= quotientDigits.size()) {
 				bool success = computeMoreDigits();
 				if (!success) {
