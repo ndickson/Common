@@ -1322,16 +1322,18 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 	while (topBlockPower <= 7 && topBlock < powersOfTen[topBlockPower+1]) {
 		++topBlockPower;
 	}
+	int32 denominatorPower = 0;
 	if (topBlockPower != 0) {
 		multiplyBase1Billion(denominator, powersOfTen[9-topBlockPower]);
-		decimalExponent += (9-topBlockPower);
+		denominatorPower += int32(9-topBlockPower);
 	}
 	if (denominator.size() < midInteger.size()) {
 		size_t numBlocksToAdd = denominator.size() - midInteger.size();
 		prependZeros(denominator, numBlocksToAdd);
-		decimalExponent += 9*numBlocksToAdd;
+		denominatorPower += int32(9*numBlocksToAdd);
 	}
 	assert(denominator.last() <= 9);
+	// denominator array = true denominator * 10^denominatorPower
 
 	bool roundUpDenominator = false;
 	for (size_t i = 0, n = denominator.size(); i < n-2; ++i) {
@@ -1349,13 +1351,22 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 		const Array<uint32>& denominator;
 		const uint64 simpleDenominatorRoundUp;
 		BufArray<char,28> quotientDigits;
+		int32 quotientExponent;
 
+		// denominatorPower is temporarily stored in quotientExponent
 		DeferredDecimalFraction(
 			Array<uint32>& numerator_,
 			const Array<uint32>& denominator_,
-			const uint64 simpleDenominatorRoundUp_
-		) : numerator(numerator_), denominator(denominator_), simpleDenominatorRoundUp(simpleDenominatorRoundUp_)
-		{}
+			const uint64 simpleDenominatorRoundUp_,
+			const int32 denominatorPower
+		) : numerator(numerator_),
+			denominator(denominator_),
+			simpleDenominatorRoundUp(simpleDenominatorRoundUp_),
+			quotientExponent((numerator_.size() != 0) ? denominatorPower : 0)
+		{
+			// Compute some initial digits, to solidify the correct quotientExponent.
+			computeMoreDigits();
+		}
 
 		void shiftUpNumerator() {
 			// Multiply numerator by a power of ten, such that its top block
@@ -1378,7 +1389,27 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 				digitsAdded += (8-topBlockPower);
 			}
 
+			if (quotientDigits.size() == 0) {
+				quotientDigits.setSize(9);
+				// true quotient
+				// = true numerator / true denominator
+				// = (numerator array * 10^numeratorPower) / (denominator array * 10^denominatorPower)
+				// = (numerator array / denominator array) * 10^(numeratorPower - denominatorPower)
+				// (numerator array / denominator array) is up to 10^9 - 1, less than 10^9,
+				// so the top digit of quotientDigits, if nonzero, will be worth 10^8 * 10^(numeratorPower - denominatorPower),
+				// so quotientExponent = 8 + numeratorPower - denominatorPower.
+				// If the top digit ends up not being used, quotientExponent will be reduced by 1
+				// and quotientDigits will be shifted over by 1.
+				// denominstaorPower was previously stored in quotientExponent.
+				int32 numeratorPower = int32(digitsAdded);
+				int32 denominatorPower = quotientExponent;
+				quotientExponent = 8 + numeratorPower - denominatorPower;
+				return;
+			}
+
 			if (digitsAdded == 0) {
+				// This shouldn't happen, but check in case shiftUpNumerator() gets called twice.
+				assert(0);
 				return;
 			}
 
@@ -1391,7 +1422,12 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 			}
 		}
 
-		void computeMoreDigits() {
+		bool computeMoreDigits() {
+			if (numerator.size() == 0) {
+				// No numerator left, so all future digits are zero.
+				return false;
+			}
+
 			shiftUpNumerator();
 
 			// Do the division for this iteration.
@@ -1490,22 +1526,39 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 				}
 			}
 
+			if (quotientDigits.size() == 9 && quotientDigits[0] == 0) {
+				// High digit is zero, so subtract 1 from quotientExponent
+				// and shift quotientDigits over by 1.
+				for (size_t i = 0; i < 8; ++i) {
+					quotientDigits[i] = quotientDigits[i+1];
+				}
+				quotientDigits.setSize(8);
+				--quotientExponent;
+			}
+
 			// Remove zeros at the top of numerator.
 			while (numerator.size() > 0 && numerator.last() == 0) {
 				numerator.setSize(numerator.size()-1);
 			}
+
+			return true;
 		}
 
-		char operator[](size_t digiti) {
+		char operator[](int32 digiti) {
+			digiti -= quotientExponent;
 			while (digiti >= quotientDigits.size()) {
-				computeMoreDigits();
+				bool success = computeMoreDigits();
+				if (!success) {
+					// No more nonzero digits.
+					return 0;
+				}
 			}
 			return quotientDigits[digiti];
 		}
 	};
-	DeferredDecimalFraction midDigits(midInteger, denominator, simpleDenominatorRoundUp);
-	DeferredDecimalFraction smallerDigits(smallerInteger, denominator, simpleDenominatorRoundUp);
-	DeferredDecimalFraction largerDigits(largerInteger, denominator, simpleDenominatorRoundUp);
+	DeferredDecimalFraction midDigits(midInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
+	DeferredDecimalFraction smallerDigits(smallerInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
+	DeferredDecimalFraction largerDigits(largerInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
 	assert(0);
 	// FIXME: Implement this!!!
 }
