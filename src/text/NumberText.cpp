@@ -917,6 +917,80 @@ static void appendDigitText(bool isNegative, const Array<char>& midDigits, size_
 	bool isNegativeExponent = (decimalExponent < 0);
 	uint32 positiveExponent = isNegativeExponent ? uint32(-decimalExponent) : uint32(decimalExponent);
 
+	const size_t initialTextSize = text.size();
+
+	if (decimalExponent < 0 && decimalExponent > -4) {
+		// Start number with 0.dddd, 0.0dddd, or 0.00dddd and omit exponent.
+		text.setSize(initialTextSize + size_t(isNegative) + 1 + positiveExponent + numDigits);
+		size_t texti = initialTextSize;
+
+		// Add the negative sign if negative.
+		if (isNegative) {
+			text[texti] = '-';
+			++texti;
+		}
+
+		text[texti] = '0';
+		++texti;
+		text[texti] = '.';
+		++texti;
+		if (positiveExponent >= 2) {
+			text[texti] = '0';
+			++texti;
+			if (positiveExponent >= 3) {
+				text[texti] = '0';
+				++texti;
+			}
+		}
+		for (size_t j = firstMidDigit; j <= i; ++j) {
+			text[texti] = (midDigits[j] + '0');
+			++texti;
+		}
+		assert(texti == text.size());
+		return;
+	}
+	if (decimalExponent < 9) {
+		// Numbers less than 1 billion are represented without the exponent.
+		size_t numDisplayedDigits = (numDigits < size_t(decimalExponent)+2) ? size_t(decimalExponent)+2 : numDigits;
+		text.setSize(initialTextSize + size_t(isNegative) + numDisplayedDigits + 1);
+		size_t texti = initialTextSize;
+
+		// Add the negative sign if negative.
+		if (isNegative) {
+			text[texti] = '-';
+			++texti;
+		}
+
+		int32 digiti = decimalExponent;
+		for (size_t j = firstMidDigit; j <= i; ++j) {
+			text[texti] = (midDigits[j] + '0');
+			++texti;
+			if (digiti == 0) {
+				text[texti] = '.';
+				++texti;
+			}
+			--digiti;
+		}
+		if (digiti >= 0) {
+			// Add zeros to reach the decimal point.
+			while (digiti >= 0) {
+				text[texti] = '0';
+				++texti;
+				--digiti;
+			}
+			text[texti] = '.';
+			++texti;
+			--digiti;
+		}
+		if (digiti == -1) {
+			// Add trailing zero after the decimal point.
+			text[texti] = '0';
+			++texti;
+		}
+		assert(texti == text.size());
+		return;
+	}
+
 	// Compute the exponent digits.  (There can be at most 3 exponent digits for doubles.)
 	char exponentDigits[3];
 	size_t numExponentDigits = 1;
@@ -929,7 +1003,6 @@ static void appendDigitText(bool isNegative, const Array<char>& midDigits, size_
 	}
 	exponentDigits[firstExponentDigit] = positiveExponent;
 
-	const size_t initialTextSize = text.size();
 	text.setSize(initialTextSize + size_t(isNegative) + numDigits + (numDigits == 1) + 2 + size_t(isNegativeExponent) + numExponentDigits);
 	size_t texti = initialTextSize;
 
@@ -967,6 +1040,7 @@ static void appendDigitText(bool isNegative, const Array<char>& midDigits, size_
 		++firstExponentDigit;
 		++texti;
 	}
+	assert(texti == text.size());
 }
 
 static void doubleToTextWithPrecision(const double value, size_t bits, Array<char>& text) {
@@ -1544,10 +1618,14 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 			return true;
 		}
 
-		char operator[](int32 digiti) {
+		int32 powerToQuotientIndex(int32 digiti) const {
 			// quotientDigits has the high digit first, and
 			// its unit is worth 10^quotientExponent.
-			digiti = quotientExponent - digiti;
+			return quotientExponent - digiti;
+		}
+
+		char operator[](int32 digiti) {
+			digiti = powerToQuotientIndex(digiti);
 			if (digiti < 0) {
 				// Digits higher than the highest digit are zero.
 				return 0;
@@ -1561,12 +1639,116 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 			}
 			return quotientDigits[digiti];
 		}
+
+		// Returns true if the quotient is zero from the digit corresponding with 10^digiti and below.
+		bool isZeroFrom(int32 digiti) {
+			digiti = powerToQuotientIndex(digiti);
+			if (digiti < 0) {
+				digiti = 0;
+			}
+			// The > instead of >= is because we don't actually need the digit at digiti,
+			// only whether numerator is empty after computing all digits before.
+			while (digiti > quotientDigits.size()) {
+				bool success = computeMoreDigits();
+				if (!success) {
+					// Reached all zero before digiti.
+					return true;
+				}
+			}
+			for (size_t n = quotientDigits.size(); size_t(digiti) < n; ++digiti) {
+				if (quotientDigits[digiti] != 0) {
+					return false;
+				}
+			}
+			return (numerator.size() == 0);
+		}
 	};
 	DeferredDecimalFraction midDigits(midInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
 	DeferredDecimalFraction smallerDigits(smallerInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
 	DeferredDecimalFraction largerDigits(largerInteger, denominator, simpleDenominatorRoundUp, denominatorPower);
-	assert(0);
-	// FIXME: Implement this!!!
+
+	bool isLargerStrict = false;
+	bool isLargerStrictPending = false;
+	bool isSmallerStrict = smallerDigits.quotientExponent < midDigits.quotientExponent;
+	if (largerDigits.quotientExponent > midDigits.quotientExponent) {
+		if (largerDigits.isZeroFrom(midDigits.quotientExponent)) {
+			isLargerStrictPending = true;
+		}
+		else {
+			isLargerStrict = true;
+		}
+	}
+	// In this case, digiti represents the power of 10 corresponding with
+	// the digit, so we start at the highest digiti and decrease it,
+	// unlike in the corresponding integer case loop above.
+	int32 digiti = midDigits.quotientExponent;
+	while (true) {
+		char midDigit = midDigits[digiti];
+		char nextMidDigit = midDigits[digiti-1];
+		bool roundUp = (nextMidDigit >= 5);
+
+		if (!isSmallerStrict) {
+			isSmallerStrict = smallerDigits[digiti] < midDigit;
+		}
+		if (!roundUp && isSmallerStrict) {
+			appendDigitText(negative, midDigits.quotientDigits, 0, midDigits.powerToQuotientIndex(digiti), midDigits.quotientExponent, text);
+			return;
+		}
+
+		if (!isLargerStrict) {
+			if (isLargerStrictPending) {
+				// We already had a larger digit in larger, but
+				// larger had all zero after it, so we couldn't round up.
+				// Now, if the current digit is anything other than 9,
+				// it won't round up with a carry, so we're safe.
+				isLargerStrict = midDigit != 9;
+				isLargerStrictPending = !isLargerStrict;
+			}
+			else {
+				isLargerStrict = largerDigits[digiti] > midDigit + 1;
+				if (largerDigits[digiti] == midDigit + 1) {
+					// If anything is nonzero in further digits, larger is strictly larger if mid is rounded up.
+					bool allZero = largerDigits.isZeroFrom(digiti-1);
+					if (!allZero) {
+						isLargerStrict = true;
+					}
+					else {
+						// Can't round up yet, until we get a new digit that isn't 9,
+						// so that rounding up doesn't make it equal to larger.
+						isLargerStrictPending = true;
+					}
+				}
+			}
+		}
+		if (roundUp && isLargerStrict) {
+			// Round current digit up, propagating any carry as necessary,
+			// possibly adding an additional digit, and possibly removing
+			// trailing zeros if the current digit is 9.
+			digiti = midDigits.powerToQuotientIndex(digiti);
+			++midDigit;
+			bool done = false;
+			while (midDigit == 10) {
+				if (digiti == 0) {
+					// Rounded up to the next power of 10.
+					midDigits.quotientDigits[0] = 1;
+					appendDigitText(negative, midDigits.quotientDigits, 0, 0, midDigits.quotientExponent+1, text);
+					done = true;
+					break;
+				}
+				midDigits.quotientDigits[digiti] = 0;
+				--digiti;
+				midDigit = midDigits.quotientDigits[digiti];
+				++midDigit;
+			}
+			if (!done) {
+				midDigits.quotientDigits[digiti] = midDigit;
+				appendDigitText(negative, midDigits.quotientDigits, 0, digiti, midDigits.quotientExponent, text);
+			}
+			return;
+		}
+
+		--digiti;
+	}
 }
 
 void floatToText(float value, Array<char>& text) {
