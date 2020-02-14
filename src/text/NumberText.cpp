@@ -1160,7 +1160,7 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 		// General case: mantissa is not an integer.
 		// This would also work for when mantissa is an integer,
 		// but that would result in using the slow, fractional codepath.
-		int32 lowBit = std::min(lowBit, int32(bitScanF64(smaller)));
+		lowBit = std::min(lowBit, int32(bitScanF64(smaller)));
 		if (lowBit != 0) {
 			mantissa >>= lowBit;
 			larger >>= lowBit;
@@ -1386,6 +1386,23 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 	BufArray<uint32,16> denominator;
 	powerOfTwoBase1Billion(denominator, uint32(-exponent));
 
+	// NOTE: 2^55 < (1 billion)^2, so only two parts of mantissa are needed.
+	uint32 mantissaLow = uint32(mantissa % oneBillion);
+	uint32 mantissaHigh = uint32(mantissa / oneBillion);
+	uint32 largerLow = uint32(larger % oneBillion);
+	uint32 largerHigh = uint32(larger / oneBillion);
+	uint32 smallerLow = uint32(smaller % oneBillion);
+	uint32 smallerHigh = uint32(smaller / oneBillion);
+	midInteger.setSize(2);
+	midInteger[0] = mantissaLow;
+	midInteger[1] = mantissaHigh;
+	largerInteger.setSize(2);
+	largerInteger[0] = largerLow;
+	largerInteger[1] = largerHigh;
+	smallerInteger.setSize(2);
+	smallerInteger[0] = smallerLow;
+	smallerInteger[1] = smallerHigh;
+
 	// Multiply denominator by a power of ten, such that its top block
 	// is at least 1 and less than 10, if it's not already, and
 	// if is fewer blocks than midInteger, prepend blocks of zero
@@ -1393,7 +1410,7 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 	// will add a block, unless it's already in [1,10).
 	uint32 topBlock = denominator.last();
 	size_t topBlockPower = 0;
-	while (topBlockPower <= 7 && topBlock < powersOfTen[topBlockPower+1]) {
+	while (topBlockPower <= 7 && topBlock >= powersOfTen[topBlockPower+1]) {
 		++topBlockPower;
 	}
 	int32 denominatorPower = 0;
@@ -1454,7 +1471,7 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 			}
 			uint32 topBlock = numerator.last();
 			size_t topBlockPower = 0;
-			while (topBlockPower <= 7 && topBlock < powersOfTen[topBlockPower+1]) {
+			while (topBlockPower <= 7 && topBlock >= powersOfTen[topBlockPower+1]) {
 				++topBlockPower;
 			}
 			if (topBlockPower != 8) {
@@ -1465,19 +1482,22 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 
 			if (quotientDigits.size() == 0) {
 				quotientDigits.setSize(9);
+				for (size_t i = 0; i != 9; ++i) {
+					quotientDigits[i] = 0;
+				}
 				// true quotient
 				// = true numerator / true denominator
-				// = (numerator array * 10^numeratorPower) / (denominator array * 10^denominatorPower)
-				// = (numerator array / denominator array) * 10^(numeratorPower - denominatorPower)
+				// = (numerator array / 10^numeratorPower) / (denominator array / 10^denominatorPower)
+				// = (numerator array / denominator array) * 10^(denominatorPower - numeratorPower)
 				// (numerator array / denominator array) is up to 10^9 - 1, less than 10^9,
-				// so the top digit of quotientDigits, if nonzero, will be worth 10^8 * 10^(numeratorPower - denominatorPower),
-				// so quotientExponent = 8 + numeratorPower - denominatorPower.
+				// so the top digit of quotientDigits, if nonzero, will be worth 10^8 * 10^(denominatorPower - numeratorPower),
+				// so quotientExponent = 8 + denominatorPower - numeratorPower.
 				// If the top digit ends up not being used, quotientExponent will be reduced by 1
 				// and quotientDigits will be shifted over by 1.
 				// denominstaorPower was previously stored in quotientExponent.
 				int32 numeratorPower = int32(digitsAdded);
 				int32 denominatorPower = quotientExponent;
-				quotientExponent = 8 + numeratorPower - denominatorPower;
+				quotientExponent = 8 + denominatorPower - numeratorPower;
 				return;
 			}
 
