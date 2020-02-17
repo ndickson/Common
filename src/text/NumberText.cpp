@@ -949,7 +949,7 @@ static void appendDigitText(bool isNegative, const Array<char>& midDigits, size_
 		assert(texti == text.size());
 		return;
 	}
-	if (decimalExponent < 9) {
+	if (decimalExponent >= 0 && decimalExponent < 9) {
 		// Numbers less than 1 billion are represented without the exponent.
 		size_t numDisplayedDigits = (numDigits < size_t(decimalExponent)+2) ? size_t(decimalExponent)+2 : numDigits;
 		text.setSize(initialTextSize + size_t(isNegative) + numDisplayedDigits + 1);
@@ -1393,15 +1393,21 @@ static void doubleToTextWithPrecision(const double value, size_t bits, Array<cha
 	uint32 largerHigh = uint32(larger / oneBillion);
 	uint32 smallerLow = uint32(smaller % oneBillion);
 	uint32 smallerHigh = uint32(smaller / oneBillion);
-	midInteger.setSize(2);
+	midInteger.setSize(1 + size_t(mantissaHigh != 0));
 	midInteger[0] = mantissaLow;
-	midInteger[1] = mantissaHigh;
-	largerInteger.setSize(2);
+	if (mantissaHigh != 0) {
+		midInteger[1] = mantissaHigh;
+	}
+	largerInteger.setSize(1 + size_t(largerHigh != 0));
 	largerInteger[0] = largerLow;
-	largerInteger[1] = largerHigh;
-	smallerInteger.setSize(2);
+	if (largerHigh != 0) {
+		largerInteger[1] = largerHigh;
+	}
+	smallerInteger.setSize(1 + size_t(smallerHigh != 0));
 	smallerInteger[0] = smallerLow;
-	smallerInteger[1] = smallerHigh;
+	if (smallerHigh != 0) {
+		smallerInteger[1] = smallerHigh;
+	}
 
 	// Multiply denominator by a power of ten, such that its top block
 	// is at least 1 and less than 10, if it's not already, and
