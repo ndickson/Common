@@ -100,6 +100,9 @@ public:
 	constexpr INLINE ShallowString(const char* text_, const size_t size);
 	constexpr INLINE ShallowString(const char* text_);
 
+	constexpr INLINE ShallowString& operator=(const ShallowString& that) = default;
+	constexpr INLINE ShallowString& operator=(ShallowString&& that) = default;
+
 	[[nodiscard]] constexpr inline bool operator==(const ShallowString& that) const;
 
 	[[nodiscard]] constexpr INLINE const char* data() const {
