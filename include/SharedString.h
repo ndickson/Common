@@ -39,6 +39,7 @@ public:
 	inline SharedString(const char* text, size_t size, uint64 hash);
 	INLINE SharedString(const char* text, size_t size);
 	explicit INLINE SharedString(const char* text);
+	explicit INLINE SharedString(const ShallowString& that);
 
 	inline ~SharedString();
 
