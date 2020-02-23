@@ -8,7 +8,7 @@
 OUTER_NAMESPACE_BEGIN
 namespace text {
 
-using namespace Common;
+using namespace COMMON_LIBRARY_NAMESPACE;
 
 // Returns true iff a UTF-8 text string is ASCII compatible,
 // i.e. iff there are no multi-byte encoded characters.
@@ -19,6 +19,12 @@ constexpr inline bool UTF8IsAllASCII(const char* utf8, size_t utf8Length) {
 		}
 	}
 	return true;
+}
+
+// Returns true iff the provided byte is the first byte of a
+// UTF-8 code point, i.e. iff it is not a continuation byte.
+constexpr INLINE bool UTF8IsFirstByte(const char utf8Byte) {
+	return (utf8Byte & char(0xC0)) != char(0x80);
 }
 
 // Given an array of UTF-8 bytes with the specified length (in bytes),
