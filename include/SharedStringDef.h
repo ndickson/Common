@@ -39,6 +39,7 @@ inline SharedString::SharedString(const char* text, size_t size, uint64 hash) {
 
 INLINE SharedString::SharedString(const char* text, size_t size) : SharedString(text, size, computeHash(text, size)) {}
 INLINE SharedString::SharedString(const char* text) : SharedString(text, text::stringSize(text)) {}
+INLINE SharedString::SharedString(const ShallowString& that) : SharedString(that.data(), that.size(), that.hash()) {}
 
 INLINE SharedString::~SharedString() {
 	// Base class destructor does decRef on data_.
@@ -50,6 +51,7 @@ INLINE SharedString& SharedString::operator=(SharedString&& that) {
 	}
 	data_ = that.data_;
 	that.data_ = nullptr;
+	return *this;
 }
 
 INLINE SharedString& SharedString::operator=(const SharedString& that) {
@@ -58,6 +60,7 @@ INLINE SharedString& SharedString::operator=(const SharedString& that) {
 	}
 	data_ = that.data_;
 	data_->incRef();
+	return *this;
 }
 
 [[nodiscard]] inline bool SharedString::operator==(const SharedString& that) const {
