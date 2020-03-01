@@ -73,6 +73,107 @@ static constexpr int minComponentsFromCharacter(const char c) {
 	}
 }
 
+static void findNameComponentInfo(const char* name, const char*& nameEnd, uint32& componentIndex, uint32& minNumComponents) {
+	// Check for components like ".x"
+	int localComponentIndex = -1;
+	minNumComponents = 1;
+	if ((nameEnd-name) >= 3 && *(nameEnd-2) == '.') {
+		const char c = *(nameEnd-1);
+		localComponentIndex = componentIndexFromCharacter(c);
+		if (localComponentIndex >= 0) {
+			minNumComponents = uint32(minComponentsFromCharacter(c));
+			// Remove the component from the name.
+			nameEnd -= 2;
+		}
+	}
+	if (localComponentIndex < 0) {
+		componentIndex = 0;
+	}
+	else {
+		componentIndex = uint32(localComponentIndex);
+	}
+}
+
+static void increaseArraySize(TableData::NamedData& metadata, TableData& table) {
+	const size_t newArrarySize = metadata.numComponents*table.numDataPoints;
+	if (metadata.type == TableData::INT64) {
+		if (metadata.typeArrayIndex == TableData::NamedData::INVALID_INDEX) {
+			metadata.typeArrayIndex = table.intArrays.size();
+			table.intArrays.setSize(metadata.typeArrayIndex + 1);
+		}
+		if (newArrarySize != 0) {
+			// Set the array size.
+			Array<int64>& array = table.intArrays[metadata.typeArrayIndex];
+			assert(array.size() == 0);
+			array.setSize(newArrarySize);
+			// Default to value zero.
+			for (size_t i = 0; i != newArrarySize; ++i) {
+				array[i] = int64(0);
+			}
+		}
+	}
+	else if (metadata.type == TableData::FLOAT64) {
+		if (metadata.typeArrayIndex == TableData::NamedData::INVALID_INDEX) {
+			metadata.typeArrayIndex = table.doubleArrays.size();
+			table.doubleArrays.setSize(metadata.typeArrayIndex + 1);
+		}
+		if (newArrarySize != 0) {
+			// Set the array size.
+			Array<double>& array = table.doubleArrays[metadata.typeArrayIndex];
+			assert(array.size() == 0);
+			array.setSize(newArrarySize);
+			// Default to value zero.
+			for (size_t i = 0; i != newArrarySize; ++i) {
+				array[i] = double(0);
+			}
+		}
+	}
+	else if (metadata.type == TableData::STRING) {
+		if (metadata.typeArrayIndex == TableData::NamedData::INVALID_INDEX) {
+			metadata.typeArrayIndex = table.stringArrays.size();
+			table.stringArrays.setSize(metadata.typeArrayIndex + 1);
+		}
+		if (newArrarySize != 0) {
+			// Set the array size.
+			Array<SharedString>& array = table.stringArrays[metadata.typeArrayIndex];
+			assert(array.size() == 0);
+			array.setSize(newArrarySize);
+			// SharedString is a non-POD type, so will be initialized to represent nullptr.
+		}
+	}
+}
+
+static void findOrAddArray(const char* name, const char* nameEnd, TableData& table, TableData::DataType defaultType, uint32& componentIndex, size_t& arrayIndex) {
+	// Check for components like ".x"
+	uint32 minNumComponents;
+	findNameComponentInfo(name, nameEnd, componentIndex, minNumComponents);
+
+	// Look for the name in existing array names.
+	size_t nameSize = nameEnd-name;
+	ShallowString shallowName(name, nameSize);
+	size_t numArrays = table.metadata.size();
+	arrayIndex = numArrays;
+	for (size_t arrayi = 0; arrayi < numArrays; ++arrayi) {
+		if (table.metadata[arrayi].name == shallowName) {
+			arrayIndex = arrayi;
+			break;
+		}
+	}
+
+	if (arrayIndex == numArrays) {
+		table.metadata.append(TableData::NamedData{SharedString(shallowName), defaultType, minNumComponents, TableData::NamedData::INVALID_INDEX});
+		if (defaultType != TableData::UNDETERMINED) {
+			increaseArraySize(table.metadata.last(), table);
+		}
+	}
+	TableData::NamedData& metadata = table.metadata[arrayIndex];
+	// Ensure that the number of components is sufficient for this component,
+	// unless there are already data points.
+	if (metadata.numComponents < minNumComponents && table.numDataPoints == 0) {
+		metadata.numComponents = minNumComponents;
+	}
+}
+
 // Returns true iff the UTF-8 code point starting at text matches a separator code point.
 // If there's a match, the text pointer is updated to point after the separator.
 static bool matchesASeparator(
@@ -281,6 +382,34 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 	Array<Span<size_t>> lines;
 	splitLines(text, textEnd, lines, true);
 
+	Array<Array<char>> newLines;
+	if (options.preprocessFunction) {
+		// NOTE: This can't be a BufArray, since newLines needs to
+		// be able to take ownership of the contents.
+		Array<char> newText;
+		size_t destLinei = 0;
+		for (size_t sourceLinei = 0, numSourceLines = lines.size(); sourceLinei < numSourceLines; ++sourceLinei) {
+			Span<size_t> span = lines[sourceLinei];
+			const char* line = text + span[0];
+			const char* lineEnd = text + span[1];
+			bool keepLine = options.preprocessFunction(line, lineEnd, newText);
+			if (keepLine) {
+				if (sourceLinei != destLinei) {
+					lines[destLinei] = span;
+				}
+				++destLinei;
+
+				if (newText.size() != 0) {
+					newLines.setSize(destLinei+1);
+					newLines[destLinei] = std::move(newText);
+				}
+			}
+		}
+		if (lines.size() != destLinei) {
+			lines.setSize(destLinei);
+		}
+	}
+
 	size_t linei = 0;
 
 	// Find the string containing the names of the data in the table.
@@ -288,8 +417,14 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 	const char* dataNamesEnd;
 	if (dataNames == nullptr) {
 		if (linei >= lines.size()) {
-			dataNames = text + lines[linei][0];
-			dataNamesEnd = text + lines[linei][1];
+			if (linei >= newLines.size() || newLines[linei].size() == 0) {
+				dataNames = text + lines[linei][0];
+				dataNamesEnd = text + lines[linei][1];
+			}
+			else {
+				dataNames = newLines[linei].begin();
+				dataNamesEnd = newLines[linei].end();
+			}
 			++linei;
 		}
 		else {
@@ -303,26 +438,89 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 
 	// If there's a linear independent array to create, create it.
 	size_t linearArrayIndex = TableData::NamedData::INVALID_INDEX;
+	uint32 linearArrayComponent;
+	bool hasLinear = false;
 	if (options.independentType == TableOptions::LINEAR) {
-		ShallowString shallowName(options.independentLinearName);
-		size_t numArrays = table.metadata.size();
-		size_t arrayIndex = numArrays;
-		for (size_t arrayi = 0; arrayi < numArrays; ++arrayi) {
-			if (table.metadata[arrayi].name == shallowName) {
-				arrayIndex = arrayi;
-				break;
-			}
+		const char* nameBegin = options.independentLinearName;
+		const char* nameEnd = nameBegin + text::stringSize(nameBegin);
+
+		TableData::DataType defaultType = options.defaultType;
+		if (defaultType == TableData::STRING || defaultType == TableData::UNDETERMINED) {
+			defaultType = TableData::FLOAT64;
 		}
-		if (arrayIndex == numArrays) {
-			table.metadata.append(TableData::NamedData{SharedString{shallowName}, TableData::FLOAT64, 1, TableData::NamedData::INVALID_INDEX});
-		}
+
+		uint32 componentIndex;
+		size_t arrayIndex;
+		findOrAddArray(nameBegin, nameEnd, table, defaultType, componentIndex, arrayIndex);
+
 		TableData::DataType type = table.metadata[arrayIndex].type;
 		if (type == TableData::UNDETERMINED) {
 			type = TableData::FLOAT64;
 			table.metadata[arrayIndex].type = type;
+			increaseArraySize(table.metadata[arrayIndex], table);
 		}
 		if (type == TableData::FLOAT64 || type == TableData::INT64) {
 			linearArrayIndex = arrayIndex;
+			linearArrayComponent = componentIndex;
+			hasLinear = true;
+		}
+	}
+
+	// Add ColSeries, if requested.
+	size_t colSeriesArrayIndex = TableData::NamedData::INVALID_INDEX;
+	bool hasColSeries = false;
+	if (options.createColSeries) {
+		const char* nameBegin = "ColSeries";
+		const char* nameEnd = nameBegin + text::stringSize(nameBegin);
+
+		TableData::DataType defaultType = options.defaultType;
+		if (defaultType == TableData::STRING || defaultType == TableData::UNDETERMINED) {
+			defaultType = TableData::INT64;
+		}
+
+		uint32 componentIndex;
+		size_t arrayIndex;
+		findOrAddArray(nameBegin, nameEnd, table, defaultType, componentIndex, arrayIndex);
+		assert(componentIndex == 0);
+
+		TableData::DataType type = table.metadata[arrayIndex].type;
+		if (type == TableData::UNDETERMINED) {
+			type = TableData::INT64;
+			table.metadata[arrayIndex].type = type;
+			increaseArraySize(table.metadata[arrayIndex], table);
+		}
+		if (type == TableData::FLOAT64 || type == TableData::INT64) {
+			colSeriesArrayIndex = arrayIndex;
+			hasColSeries = true;
+		}
+	}
+
+	// Add RowSeries, if requested.
+	size_t rowSeriesArrayIndex = TableData::NamedData::INVALID_INDEX;
+	bool hasRowSeries = false;
+	if (options.createRowSeries) {
+		const char* nameBegin = "RowSeries";
+		const char* nameEnd = nameBegin + text::stringSize(nameBegin);
+
+		TableData::DataType defaultType = options.defaultType;
+		if (defaultType == TableData::STRING || defaultType == TableData::UNDETERMINED) {
+			defaultType = TableData::INT64;
+		}
+
+		uint32 componentIndex;
+		size_t arrayIndex;
+		findOrAddArray(nameBegin, nameEnd, table, defaultType, componentIndex, arrayIndex);
+		assert(componentIndex == 0);
+
+		TableData::DataType type = table.metadata[arrayIndex].type;
+		if (type == TableData::UNDETERMINED) {
+			type = TableData::INT64;
+			table.metadata[arrayIndex].type = type;
+			increaseArraySize(table.metadata[arrayIndex], table);
+		}
+		if (type == TableData::FLOAT64 || type == TableData::INT64) {
+			rowSeriesArrayIndex = arrayIndex;
+			hasRowSeries = true;
 		}
 	}
 
@@ -393,48 +591,14 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 				nameEnd = tempText.end();
 			}
 		}
-		size_t nameSize = nameEnd-nameBegin;
 
-		// Check for components like ".x"
-		int componentIndex = -1;
-		uint32 minNumComponents = 1;
-		if (nameSize >= 3 && nameBegin[nameSize-2] == '.') {
-			componentIndex = componentIndexFromCharacter(nameBegin[nameSize-1]);
-			if (componentIndex >= 0) {
-				minNumComponents = uint32(minComponentsFromCharacter(nameBegin[nameSize-1]));
-				nameEnd -= 2;
-				nameSize -= 2;
-			}
-		}
-		if (componentIndex < 0) {
-			componentIndex = 0;
-		}
-
-		// Look for the name in existing array names.
-		ShallowString shallowName(nameBegin, nameSize);
-		size_t numArrays = table.metadata.size();
-		size_t arrayIndex = numArrays;
-		for (size_t arrayi = 0; arrayi < numArrays; ++arrayi) {
-			if (table.metadata[arrayi].name == shallowName) {
-				arrayIndex = arrayi;
-				break;
-			}
-		}
-
-		if (arrayIndex == numArrays) {
-			table.metadata.append(TableData::NamedData{SharedString(shallowName), TableData::UNDETERMINED, 1, TableData::NamedData::INVALID_INDEX});
-		}
-		TableData::NamedData& metadata = table.metadata[arrayIndex];
-		// Ensure that the number of components is sufficient for this component,
-		// unless there are already data points.
-		if (metadata.numComponents < minNumComponents && table.numDataPoints == 0) {
-			assert(table.numDataPoints == 0);
-			metadata.numComponents = minNumComponents;
-		}
+		uint32 componentIndex;
+		size_t arrayIndex;
+		findOrAddArray(nameBegin, nameEnd, table, options.defaultType, componentIndex, arrayIndex);
 
 		// TODO: Handle the case of multiple columns for the same component of the same array.
 		columnArrayIndices[columni] = arrayIndex;
-		columnComponents[columni] = uint32(componentIndex);
+		columnComponents[columni] = componentIndex;
 	}
 
 	size_t numIndependentCols = (options.independentType == TableOptions::FIRST_COLUMNS) ? options.numIndependentCols : 0;
@@ -445,9 +609,22 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 
 	// FIXME: Handle series numbers!!!
 
+	const size_t firstLineIndex = linei;
+	const size_t numDataPointsPerColSeries = lines.size() - firstLineIndex;
+	const size_t initialNumDataPoints = table.numDataPoints;
+	size_t dataPointIndex = initialNumDataPoints;
+	size_t numColSeries = 0;
 	for (size_t numLines = lines.size(); linei < numLines; ++linei) {
+		size_t rowStartDataPointIndex = dataPointIndex;
+		size_t currentColSeries = 0;
+		size_t previousColSeries;
+
 		const char* line = text + lines[linei][0];
-		const char*const lineEnd = text + lines[linei][1];
+		const char* lineEnd = text + lines[linei][1];
+		if (linei < newLines.size() && newLines[linei].size() != 0) {
+			line = newLines[linei].begin();
+			lineEnd = newLines[linei].end();
+		}
 		splitColumns(
 			line,
 			lineEnd,
@@ -461,8 +638,6 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 		size_t numColumnsThisRow = columns.size();
 
 		for (size_t columni = 0; columni < numColumnsThisRow; ++columni) {
-			const char* columnText = line + columns[columni][0];
-			const char*const columnEnd = line + columns[columni][1];
 
 			size_t uniqueColumni = columni;
 			if (columni >= numUniqueColumns) {
@@ -472,40 +647,157 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 					break;
 				}
 				uniqueColumni = ((columni - numIndependentCols) % numDependentCols) + numIndependentCols;
+				if (uniqueColumni == numIndependentCols) {
+					if (options.rowMajor) {
+						++dataPointIndex;
+					}
+					else {
+						dataPointIndex += numDataPointsPerColSeries;
+					}
+					++currentColSeries;
+				}
 			}
 
+			const size_t origNumDataPoints = table.numDataPoints;
+			if (options.rowMajor && dataPointIndex >= table.numDataPoints) {
+				table.numDataPoints = initialNumDataPoints + dataPointIndex+1;
+			}
+			else if (!options.rowMajor && currentColSeries >= numColSeries) {
+				numColSeries = currentColSeries+1;
+				table.numDataPoints = initialNumDataPoints + numColSeries*numDataPointsPerColSeries;
+			}
+			if (table.numDataPoints != origNumDataPoints) {
+				// Resize all arrays, taking into account the number of components.
+				for (auto& otherMeta : table.metadata) {
+					// NOTE: otherMeta.type may be UNDETERMINED, in which case,
+					// it will be initialized below before the first write to it.
+					increaseArraySize(otherMeta, table);
+				}
+			}
 
+			// Now that the arrays are resized, if we're adding implicit arrays,
+			// compute and store the values for them.
+			if (columni == 0 || currentColSeries != previousColSeries) {
+				size_t rowNumber = (linei - firstLineIndex);
+				if (hasLinear) {
+					const TableData::NamedData& linearMetadata = table.metadata[linearArrayIndex];
+					const double value = options.independentLinearBegin + rowNumber*options.independentLinearIncrement;
+					uint32 numComponents = linearMetadata.numComponents;
+					if (linearArrayComponent < numComponents) {
+						size_t currentIndex = dataPointIndex*numComponents + linearArrayComponent;
+						if (linearMetadata.type == TableData::FLOAT64) {
+							Array<double>& array = table.doubleArrays[linearMetadata.typeArrayIndex];
+							array[currentIndex] = value;
+						}
+						else {
+							assert(linearMetadata.type == TableData::INT64);
+							Array<int64>& array = table.intArrays[linearMetadata.typeArrayIndex];
+							// Round, in case value isn't exactly an integer.
+							int64 intValue = int64(value + ((value >= 0) ? 0.5 : -0.5));
+							array[currentIndex] = intValue;
+						}
+					}
+				}
+				if (hasRowSeries) {
+					// FIXME: Handle initializing RowSeries when column major and missing data in some rows!!!
+
+					const TableData::NamedData& rowMetadata = table.metadata[rowSeriesArrayIndex];
+					uint32 numComponents = rowMetadata.numComponents;
+					// Row component is always zero.
+					size_t currentIndex = dataPointIndex*numComponents;
+					if (rowMetadata.type == TableData::FLOAT64) {
+						Array<double>& array = table.doubleArrays[rowMetadata.typeArrayIndex];
+						array[currentIndex] = double(rowNumber);
+					}
+					else {
+						assert(rowMetadata.type == TableData::INT64);
+						Array<int64>& array = table.intArrays[rowMetadata.typeArrayIndex];
+						array[currentIndex] = int64(rowNumber);
+					}
+				}
+				if (hasColSeries) {
+					// FIXME: Handle initializing ColSeries when column major and missing data in some rows!!!
+
+					const TableData::NamedData& colMetadata = table.metadata[colSeriesArrayIndex];
+					uint32 numComponents = colMetadata.numComponents;
+					// Row component is always zero.
+					size_t currentIndex = dataPointIndex*numComponents;
+					if (colMetadata.type == TableData::FLOAT64) {
+						Array<double>& array = table.doubleArrays[colMetadata.typeArrayIndex];
+						array[currentIndex] = double(currentColSeries);
+					}
+					else {
+						assert(colMetadata.type == TableData::INT64);
+						Array<int64>& array = table.intArrays[colMetadata.typeArrayIndex];
+						array[currentIndex] = int64(currentColSeries);
+					}
+				}
+				if (columni != 0 && numIndependentCols != 0) {
+					// FIXME: Handle initializing independent values when column major and missing data in some rows!!!
+
+					// Copy the independent values to the current data point.
+					for (size_t indepCol = 0; indepCol != numIndependentCols; ++indepCol) {
+						size_t indepArrayIndex = columnArrayIndices[indepCol];
+						uint32 indepComponent = columnComponents[indepCol];
+						const TableData::NamedData& metadata = table.metadata[indepArrayIndex];
+						if (indepComponent >= metadata.numComponents) {
+							continue;
+						}
+
+						uint32 numComponents = metadata.numComponents;
+						size_t currentIndex = dataPointIndex*numComponents + indepComponent;
+						size_t sourceIndex = rowStartDataPointIndex*numComponents + indepComponent;
+						TableData::DataType type = metadata.type;
+						if (type == TableData::FLOAT64) {
+							Array<double>& array = table.doubleArrays[metadata.typeArrayIndex];
+							array[currentIndex] = array[sourceIndex];
+						}
+						else if (type == TableData::INT64) {
+							Array<int64>& array = table.intArrays[metadata.typeArrayIndex];
+							array[currentIndex] = array[sourceIndex];
+						}
+						else if (type == TableData::STRING) {
+							Array<SharedString>& array = table.stringArrays[metadata.typeArrayIndex];
+							array[currentIndex] = array[sourceIndex];
+						}
+					}
+				}
+				previousColSeries = currentColSeries;
+			}
+
+			// Back to handling the data associated with the current column.
 			TableData::NamedData& metadata = table.metadata[columnArrayIndices[uniqueColumni]];
+
+			const char* columnText = line + columns[columni][0];
+			const char*const columnEnd = line + columns[columni][1];
 
 			if (metadata.type == TableData::UNDETERMINED) {
 				// Guess the data type based on the content of the first piece of data.
 				metadata.type = guessTypeFromText(columnText, columnEnd);
-				if (metadata.type == TableData::INT64) {
-					metadata.typeArrayIndex = table.intArrays.size();
-					table.intArrays.setSize(metadata.typeArrayIndex + 1);
-					// FIXME: Set the array size!!!
-				}
-				else if (metadata.type == TableData::FLOAT64) {
-					metadata.typeArrayIndex = table.doubleArrays.size();
-					table.doubleArrays.setSize(metadata.typeArrayIndex + 1);
-					// FIXME: Set the array size!!!
-				}
-				else {//if (metadata.type == TableData::STRING) {
-					metadata.typeArrayIndex = table.stringArrays.size();
-					table.stringArrays.setSize(metadata.typeArrayIndex + 1);
-					// FIXME: Set the array size!!!
-				}
+				increaseArraySize(metadata, table);
 			}
+
+			uint32 component = columnComponents[uniqueColumni];
+			uint32 numComponents = metadata.numComponents;
+			if (component >= numComponents) {
+				continue;
+			}
+
+			size_t currentIndex = dataPointIndex*numComponents + component;
 
 			if (metadata.type == TableData::INT64) {
 				int64 value;
 				textToInteger(columnText, columnEnd, value);
 
+				Array<int64>& array = table.intArrays[metadata.typeArrayIndex];
+				array[currentIndex] = value;
 			}
 			else if (metadata.type == TableData::FLOAT64) {
 				double value;
 				textToDouble(columnText, columnEnd, value);
 
+				Array<double>& array = table.doubleArrays[metadata.typeArrayIndex];
+				array[currentIndex] = value;
 			}
 			else {//if (metadata.type == TableData::STRING) {
 				// Only escape quoted strings if the text starts with a quote and spans the full text.
@@ -530,16 +822,17 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 					value = ShallowString(columnText, columnEnd-columnText);
 				}
 
-
+				Array<SharedString>& array = table.stringArrays[metadata.typeArrayIndex];
+				array[currentIndex] = std::move(SharedString(value));
 			}
 		}
+
+		// Move to the next row
+		if (!options.rowMajor) {
+			dataPointIndex = rowStartDataPointIndex;
+		}
+		++dataPointIndex;
 	}
-
-
-
-
-
-
 
 	return true;
 }
