@@ -198,7 +198,7 @@ public:
 		}
 	{}
 
-	constexpr INLINE Box(const Span<T>& min, const Span<T>& max) :
+	constexpr INLINE Box(const Vec<T,2>& min, const Vec<T,2>& max) :
 		v{
 			{min[0], max[0]},
 			{min[1], max[1]}
