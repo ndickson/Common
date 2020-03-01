@@ -8,6 +8,7 @@
 #include "../SharedString.h"
 
 #include <memory>
+#include <functional>
 
 OUTER_NAMESPACE_BEGIN
 namespace text {
@@ -68,6 +69,11 @@ struct TableOptions {
 	// If null, the first line of the table specifies the names.
 	const char* dataNames = nullptr;
 
+	// Any new arrays will be given this type.  If UNDETERMINED,
+	// the type will be determined based on the content of the
+	// text for the first value associated with each new array.
+	TableData::DataType defaultType = TableData::UNDETERMINED;
+
 	// If true, different sets of dependent columns in a single row will be stored
 	// contiguously in the arrays.  If false, all of the data of one column will be
 	// stored before the data for the next column corresponding with the same array.
@@ -85,6 +91,13 @@ struct TableOptions {
 	bool treatMultipleSeparatorsAsOne = true;
 	const size_t* columnWidths = nullptr;
 	size_t numColumnWidths = 0;
+
+	// If provided, this is a functor for preprocessing each line before anything else.
+	// The functor should return true if the line is to be kept in some form,
+	// or false if the line is to be fully discarded.
+	// If the line is to be kept but changed, newText should be filled with the
+	// new text of the line, else it should be cleared.
+	std::function<bool(const char* line, const char* lineEnd, Array<char>& newText)> preprocessFunction;
 };
 
 COMMON_LIBRARY_EXPORTED bool ReadTableText(const char* text, const char*const textEnd, const TableOptions& options, TableData& table);
