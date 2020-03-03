@@ -5,6 +5,7 @@
 
 #include "../Types.h"
 #include "../Array.h"
+#include "../ArrayDef.h"
 #include "../SharedString.h"
 
 #include <memory>
@@ -39,6 +40,15 @@ struct TableData {
 	Array<Array<SharedString>> stringArrays;
 
 	Array<size_t> majorSeriesStarts;
+
+	void clear() {
+		numDataPoints = 0;
+		metadata.setSize(0);
+		intArrays.setSize(0);
+		doubleArrays.setSize(0);
+		stringArrays.setSize(0);
+		majorSeriesStarts.setSize(0);
+	}
 };
 
 struct TableOptions {
