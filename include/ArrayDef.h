@@ -4,11 +4,11 @@
 // Array and BufArray, declared in Array.h, that require malloc, free, or realloc.
 // In order to call those functions, you must include this file.
 
-#include "Types.h"
 #include "Array.h"
+#include "Types.h"
 
 #include <new> // For placement new operator
-#include <stdlib.h> // For free and realloc
+#include <cstdlib> // For free and realloc
 #include <type_traits>
 
 OUTER_NAMESPACE_BEGIN
@@ -181,7 +181,9 @@ void Array<T>::setCapacity(const size_t newCapacity) {
 			// so we must allocate a new buffer and move-assign the data.
 			T* oldData = data_.release();
 			data_.realloc(newCapacity);
-			moveAssignSpan(begin(), end(), oldData);
+			// release() should have made realloc() allocate a new buffer.
+			assert(begin() != oldData);
+			moveConstructSpan(begin(), end(), oldData);
 			free(oldData);
 		}
 
@@ -212,7 +214,9 @@ void Array<T>::increaseCapacity(const size_t newCapacity) {
 			// so we must allocate a new buffer and move-assign the data.
 			T* oldData = data_.release();
 			data_.realloc(newCapacity);
-			moveAssignSpan(begin(), end(), oldData);
+			// release() should have made realloc() allocate a new buffer.
+			assert(begin() != oldData);
+			moveConstructSpan(begin(), end(), oldData);
 			free(oldData);
 		}
 
