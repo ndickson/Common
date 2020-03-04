@@ -49,6 +49,7 @@ public:
 	inline SharedString& operator=(const SharedString& that);
 
 	[[nodiscard]] inline bool operator==(const SharedString& that) const;
+	[[nodiscard]] inline bool operator!=(const SharedString& that) const;
 
 	// This is useful for fast comparison if it's known that all SharedString
 	// objects have been reduced to single equivalence class representatives
@@ -105,6 +106,7 @@ public:
 	constexpr INLINE ShallowString& operator=(ShallowString&& that) = default;
 
 	[[nodiscard]] constexpr inline bool operator==(const ShallowString& that) const;
+	[[nodiscard]] constexpr inline bool operator!=(const ShallowString& that) const;
 
 	[[nodiscard]] constexpr INLINE const char* data() const {
 		return text;
@@ -131,6 +133,13 @@ public:
 }
 [[nodiscard]] constexpr INLINE bool operator==(const SharedString& a, const ShallowString& b) {
 	return ShallowString(a) == b;
+}
+
+[[nodiscard]] constexpr INLINE bool operator!=(const ShallowString& a, const SharedString& b) {
+	return a != ShallowString(b);
+}
+[[nodiscard]] constexpr INLINE bool operator!=(const SharedString& a, const ShallowString& b) {
+	return ShallowString(a) != b;
 }
 
 [[nodiscard]] constexpr INLINE bool SharedString::arePointersEqual(const ShallowString& that) const {
