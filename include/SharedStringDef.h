@@ -88,6 +88,10 @@ INLINE SharedString& SharedString::operator=(const SharedString& that) {
 		size);
 }
 
+[[nodiscard]] INLINE bool SharedString::operator!=(const SharedString& that) const {
+	return !(*this == that);
+}
+
 [[nodiscard]] constexpr INLINE uint64 SharedString::computeHash(const char* text, size_t size) {
 	return text::stringHash(text, size);
 }
@@ -112,6 +116,10 @@ constexpr INLINE ShallowString::ShallowString(const char* text_) : ShallowString
 		return true;
 	}
 	return text::areEqualSizeStringsEqual(text, that.text, size_);
+}
+
+[[nodiscard]] constexpr INLINE bool ShallowString::operator!=(const ShallowString& that) const {
+	return !(*this == that);
 }
 
 COMMON_LIBRARY_NAMESPACE_END
