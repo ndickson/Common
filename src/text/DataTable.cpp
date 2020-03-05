@@ -104,10 +104,10 @@ static void increaseArraySize(TableData::NamedData& metadata, TableData& table) 
 		if (newArrarySize != 0) {
 			// Set the array size.
 			Array<int64>& array = table.intArrays[metadata.typeArrayIndex];
-			assert(array.size() == 0);
+			size_t oldArraySize = array.size();
 			array.setSize(newArrarySize);
 			// Default to value zero.
-			for (size_t i = 0; i != newArrarySize; ++i) {
+			for (size_t i = oldArraySize; i != newArrarySize; ++i) {
 				array[i] = int64(0);
 			}
 		}
@@ -120,10 +120,10 @@ static void increaseArraySize(TableData::NamedData& metadata, TableData& table) 
 		if (newArrarySize != 0) {
 			// Set the array size.
 			Array<double>& array = table.doubleArrays[metadata.typeArrayIndex];
-			assert(array.size() == 0);
+ 			size_t oldArraySize = array.size();
 			array.setSize(newArrarySize);
 			// Default to value zero.
-			for (size_t i = 0; i != newArrarySize; ++i) {
+			for (size_t i = oldArraySize; i != newArrarySize; ++i) {
 				array[i] = double(0);
 			}
 		}
@@ -136,7 +136,6 @@ static void increaseArraySize(TableData::NamedData& metadata, TableData& table) 
 		if (newArrarySize != 0) {
 			// Set the array size.
 			Array<SharedString>& array = table.stringArrays[metadata.typeArrayIndex];
-			assert(array.size() == 0);
 			array.setSize(newArrarySize);
 			// SharedString is a non-POD type, so will be initialized to represent nullptr.
 		}
@@ -416,7 +415,7 @@ bool ReadTableText(const char* text, const char*const textEnd, const TableOption
 	const char* dataNames = options.dataNames;
 	const char* dataNamesEnd;
 	if (dataNames == nullptr) {
-		if (linei >= lines.size()) {
+		if (linei < lines.size()) {
 			if (linei >= newLines.size() || newLines[linei].size() == 0) {
 				dataNames = text + lines[linei][0];
 				dataNamesEnd = text + lines[linei][1];
