@@ -116,14 +116,22 @@ protected:
 	template<bool WRITE_ACCESS>
 	class accessor_base {
 		SubTable* subTable = nullptr;
-		size_t index = 0;
+		const VALUE_T* item = nullptr;
 
-		void init(SubTable* subTable_, size_t index_) {
+		void init(SubTable* subTable_, const VALUE_T* item_) {
 			subTable = subTable_;
-			index = index_;
+			item = item_;
+		}
+	public:
+		INLINE accessor_base() = default;
+
+		INLINE ~accessor_base() {
+			release();
 		}
 
-		void releaseAccess() {
+		using value_type = const VALUE_T;
+
+		void release() {
 			if (subTable == nullptr) {
 				return;
 			}
@@ -134,11 +142,18 @@ protected:
 				subTable->stopReading();
 			}
 			subTable = nullptr;
-			index = 0;
+			item = nullptr;
 		}
 
-		~accessor_base() {
-			releaseAccess();
+		const VALUE_T& operator*() const {
+			return *item;
+		}
+		const VALUE_T* operator->() const {
+			return item;
+		}
+
+		bool empty() const {
+			return (item == nullptr);
 		}
 	};
 
@@ -236,18 +251,57 @@ protected:
 	}
 
 	template<typename SET_T,typename ACCESSOR_T>
-	static bool findCommon(SET_T& set, ACCESSOR_T& accessor, const VALUE_T& value);
+	static bool findCommon(SET_T& set, ACCESSOR_T& accessor, const VALUE_T& value) {
+		uint64 hashCode = Hasher::hash(value);
+		SubTable* subTable = set.getSubTableAndCode(hashCode);
+
+		// If the sub-table is null or empty, we can even avoid getting read access,
+		// since this should never happen, even temporarily, if an item is in the sub-table.
+		if (subTable->data == nullptr || subTable->size == 0) {
+			return false;
+		}
+
+		if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+			subTable->startReading();
+		}
+		else {
+			subTable->startWriting();
+		}
+
+		const size_t capacity = subTable->capacity;
+		const std::pair<VALUE_T,size_t>* data = subTable->data;
+
+		// NOTE: findInTable will check for null again, which is necessary.
+		size_t index = findInTable(data, capacity, hashCode, value);
+		if (index >= capacity) {
+			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+				subTable->stopReading();
+			}
+			else {
+				subTable->stopWriting();
+			}
+			return false;
+		}
+
+		accessor.init(subTable, &data[index].first);
+		return true;
+	}
+
+	bool insertCommon(const_accessor* accessor, const VALUE_T& value) {
+		assert(0);
+		// FIXME: Implement this!!!
+	}
 
 public:
 	BigSet() : subTables(new SubTable[NUM_SUB_TABLES]) {}
 
-	class const_accessor;
+	using const_accessor = accessor_base<false>;
 
 	// The set interface doesn't allow modifying items that are in the set,
 	// in case changing them would change the hash code or make them equal
 	// to other items in the map, so this only differs from
 	// const_accessor in the ability to call erase, since it has write access.
-	class accessor;
+	using accessor = accessor_base<true>;
 
 	// Find the value in the set and acquire a const_accessor to it.
 	// If there is an equal item in the set, this returns true, else false.
@@ -270,12 +324,16 @@ public:
 	// If the insertion succeeded, this returns true.
 	// If there was already an equal item in the set, a const_accessor
 	// to the existing item is acquired, and this returns false.
-	bool insert(const_accessor& accessor, const VALUE_T& value);
+	bool insert(const_accessor& accessor, const VALUE_T& value) {
+		return insertCommon(&accessor, value);
+	}
 
 	// Insert the value into the set, when an accessor is not needed.
 	// If the insertion succeeded, this returns true.
 	// If there was already an equal item in the set, this returns false.
-	bool insert(const VALUE_T& value);
+	bool insert(const VALUE_T& value) {
+		return insertCommon(nullptr, value);
+	}
 
 	// Remove the item referenced by the const_accessor from the set.
 	// If there was an item referenced by the const_accessor, this returns true.
@@ -288,46 +346,6 @@ public:
 	// If an item was removed, this returns true, else false.
 	bool erase(const VALUE_T& value);
 };
-
-template<typename VALUE_T, typename Hasher>
-template<typename SET_T, typename ACCESSOR_T>
-inline bool BigSet<VALUE_T,Hasher>::findCommon<SET_T,ACCESSOR_T>(
-	SET_T& set, ACCESSOR_T& accessor, const VALUE_T& value
-) {
-	uint64 hashCode = Hasher::hash(value);
-	SubTable* subTable = set.getSubTableAndCode(hashCode);
-
-	// If the sub-table is null or empty, we can even avoid getting read access,
-	// since this should never happen, even temporarily, if an item is in the sub-table.
-	if (subTable->data == nullptr || subTable->size == 0) {
-		return false;
-	}
-
-	if (std::is_same<ACCESSOR_T,const_accessor>::value) {
-		subTable->startReading();
-	}
-	else {
-		subTable->startWriting();
-	}
-
-	const size_t capacity = subTable->capacity;
-	const std::pair<VALUE_T,size_t>* data = subTable->data;
-
-	// NOTE: findInTable will check for null again, which is necessary.
-	size_t index = findInTable(data, capacity, hashCode, value);
-	if (index >= capacity) {
-		if (std::is_same<ACCESSOR_T,const_accessor>::value) {
-			subTable->stopReading();
-		}
-		else {
-			subTable->stopWriting();
-		}
-		return false;
-	}
-
-	accessor.init(subTable, index);
-	return true;
-}
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
