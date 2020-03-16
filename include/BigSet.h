@@ -27,7 +27,8 @@ protected:
 		volatile size_t capacity;
 
 		// The size_t of each pair is the current target index in this sub-table.
-		volatile std::pair<VALUE_T,size_t>*volatile data;
+		using Pair = std::pair<VALUE_T,size_t>;
+		Pair*volatile data;
 
 		constexpr static size_t EMPTY_INDEX = ~size_t(0);
 
@@ -105,6 +106,57 @@ protected:
 			assert(numReaders.load(std::memory_order_relaxed) == -1);
 			numReaders.store(0, std::memory_order_release);
 		}
+
+		// NOTE: Changing from write to read is safe, because
+		// write access is exclusive.
+		void changeFromWriteToRead() {
+			assert(numReaders.load(std::memory_order_relaxed) == -1);
+			numReaders.store(1, std::memory_order_release);
+		}
+
+		bool tryChangeFromReadToWrite() {
+			assert(numReaders.load(std::memory_order_relaxed) != 0);
+			assert(numReaders.load(std::memory_order_relaxed) != -1);
+
+			// This is similar to startWriting, except that
+			// value being negative means that this function must give up,
+			// and value being 1 is the value at which to switch to -1,
+			// instead of 0 being the value at which to switch to -1.
+
+			bool success;
+			intptr_t value = numReaders.load(std::memory_order_relaxed);
+			size_t attempt = 0;
+			do {
+				if (value < -1) {
+					// Another thread is waiting for all readers to stop
+					// before switching to writing, so this thread can't
+					// switch to writing (-1), else the other thread will
+					// think that it acquired write access.
+					return false;
+				}
+				// NOTE: value should not be -1 or 0 here, since this thread
+				// is supposed to have read access, which would preclude a writer.
+				if (value == 1) {
+					// This thread is the only reader, so try switching to write.
+					success = numReaders.compare_exchange_strong(value, intptr_t(-1), std::memory_order_acq_rel);
+				}
+				else {
+					// There are other readers, so block new readers and wait for
+					// write access.
+					intptr_t newValue = intptr_t(-1) - value;
+					success = numReaders.compare_exchange_strong(value, newValue, std::memory_order_acq_rel);
+					if (success) {
+						// Wait for the value to become -1 when all readers finish.
+						while (numReaders.load(std::memory_order_acquire) != intptr_t(-1))
+						{
+							backOff(attempt);
+						}
+					}
+				}
+			} while (!success);
+
+			return true;
+		}
 	};
 
 	std::unique_ptr<SubTable[]> subTables;
@@ -157,7 +209,7 @@ protected:
 		}
 	};
 
-	static size_t findInTable(const std::pair<VALUE_T,size_t>*const begin, size_t capacity, uint64 hashCode, const VALUE_T& value) {
+	static size_t findInTable(const Pair*const begin, size_t capacity, uint64 hashCode, const VALUE_T& value) {
 		if (begin == nullptr) {
 			assert(capacity == 0);
 			return 0;
@@ -167,7 +219,7 @@ protected:
 		const size_t targetIndex = size_t(hashCode % capacity);
 		size_t currentIndex = targetIndex;
 
-		const std::pair<VALUE_T,size_t>* current = begin + currentIndex;
+		const Pair* current = begin + currentIndex;
 		size_t currentTargetIndex = current->second;
 
 		// The most common cases are immediately hitting an empty slot
@@ -197,6 +249,11 @@ protected:
 				assert(currentIndex != targetIndex);
 
 				size_t newTargetIndex = current->second;
+				// This check for empty index is necessary here,
+				// since EMPTY_INDEX is greater than any valid target index.
+				if (newTargetIndex == SubTable::EMPTY_INDEX) {
+					return capacity;
+				}
 				insideWrapAround = (newTargetIndex >= currentTargetIndex);
 				currentTargetIndex = newTargetIndex;
 			} while (insideWrapAround);
@@ -269,7 +326,7 @@ protected:
 		}
 
 		const size_t capacity = subTable->capacity;
-		const std::pair<VALUE_T,size_t>* data = subTable->data;
+		const Pair* data = subTable->data;
 
 		// NOTE: findInTable will check for null again, which is necessary.
 		size_t index = findInTable(data, capacity, hashCode, value);
@@ -283,11 +340,69 @@ protected:
 			return false;
 		}
 
-		accessor.init(subTable, &data[index].first);
+		accessor.init(subTable, &(data[index].first));
 		return true;
 	}
 
 	bool insertCommon(const_accessor* accessor, const VALUE_T& value) {
+		uint64 hashCode = Hasher::hash(value);
+		SubTable* subTable = set.getSubTableAndCode(hashCode);
+
+		size_t capacity;
+		size_t targetIndex = SubTable::EMPTY_INDEX;
+		bool changedFromReadToWrite = false;
+
+		if (subTable->data != nullptr) {
+			// First, check if the item is in the map via reading,
+			// so that if it's very common that the item is already in the set,
+			// multiple threads can check at the same time.
+			subTable->startReading();
+
+			capacity = subTable->capacity;
+			const Pair* data = subTable->data;
+
+			// NOTE: findInTable will check for null again, which is necessary.
+			// FIXME: Use the search from findInTable to find the location
+			// where an item should be inserted!!!
+			size_t index = findInTable(data, capacity, hashCode, value);
+
+			if (index < capacity) {
+				accessor.init(subTable, &(data[index].first));
+				return true;
+			}
+
+			// Unfortunately, it's not always feasible to change read access into
+			// write access, because another thread may be already
+			// trying to acquire write access, in which case, this reader
+			// keeping read access would cause a deadlock.  However, it's often
+			// feasible to do so, saving some atomic operations in the common case,
+			// with a fallback to stopping reading and then starting writing.
+			changedFromReadToWrite = subTable->tryChangeFromReadToWrite();
+			if (!changedFromReadToWrite) {
+				subTable->stopReading();
+			}
+		}
+
+		// The assumption is that we'll probably be inserting, but we still need
+		// to check again for an inserted item if !changedFromReadToWrite,
+		// since we had to remove the read access temporarily.
+		if (!changedFromReadToWrite) {
+			subTable->startWriting();
+		}
+
+
+
+
+
+
+
+		if (accessor == nullptr) {
+			subTable->stopWriting();
+		}
+		else {
+			accessor->init(subTable, &(data[index].first));
+			subTable->changeFromWriteToRead();
+		}
 		assert(0);
 		// FIXME: Implement this!!!
 	}
