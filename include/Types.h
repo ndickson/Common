@@ -120,6 +120,40 @@ class Queue;
 template<typename T, size_t BUF_N>
 class BufQueue;
 
+// Specialize this for types that may be used as keys in hash sets or hash maps.
+template<typename T>
+struct DefaultHasher;
+
+template<typename T>
+struct DefaultIntHasher {
+	static INLINE bool equals(const T& a, const T& b) {
+		return (a == b);
+	}
+	static INLINE uint64 hash(const T& a) {
+		return uint64(a);
+	}
+};
+
+template<> struct DefaultHasher<int8> : public DefaultIntHasher<int8> {};
+template<> struct DefaultHasher<uint8> : public DefaultIntHasher<uint8> {};
+template<> struct DefaultHasher<int16> : public DefaultIntHasher<int16> {};
+template<> struct DefaultHasher<uint16> : public DefaultIntHasher<uint16> {};
+template<> struct DefaultHasher<int32> : public DefaultIntHasher<int32> {};
+template<> struct DefaultHasher<uint32> : public DefaultIntHasher<uint32> {};
+template<> struct DefaultHasher<int64> : public DefaultIntHasher<int64> {};
+template<> struct DefaultHasher<uint64> : public DefaultIntHasher<uint64> {};
+
+template<typename T>
+struct DefaultHasher<T*> {
+	static INLINE bool equals(const T* a, const T* b) {
+		return (a == b);
+	}
+	static INLINE uint64 hash(const T* a) {
+		// Make sure the low bits are as significant as possible.
+		return uint64(uintptr_t(a) / alignof(T));
+	}
+};
+
 // Specialize this for types that can be realloc'd, but cannot be memcpy'd.
 // It's primarily types that contain pointers to within their own direct memory
 // that can't be realloc'd, (e.g. BufArray), but not many types have this
