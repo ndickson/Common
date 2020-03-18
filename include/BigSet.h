@@ -32,12 +32,7 @@ protected:
 
 		constexpr static size_t EMPTY_INDEX = ~size_t(0);
 
-		SubTable() {
-			numReaders.store(0, std::memory_order_relaxed);
-			size = 0;
-			capacity = 0;
-			data = nullptr;
-		}
+		SubTable() : numReaders(0), size(0), capacity(0), data(nullptr) {}
 
 		~SubTable() {
 			assert(numReaders.load(std::memory_order_relaxed) == 0);
@@ -234,7 +229,7 @@ public:
 protected:
 
 	template<bool CHECK_EQUAL>
-	static bool findInTable(const typename SubTable::Pair*const begin, size_t capacity, uint64 hashCode, const VALUE_T& value, size_t& index, size_t& targetIndex) {
+	static bool findInTable(const typename SubTable::Pair*const begin, const size_t capacity, uint64 hashCode, const VALUE_T& value, size_t& index, size_t& targetIndex) {
 		if (begin == nullptr) {
 			assert(capacity == 0);
 			index = SubTable::EMPTY_INDEX;
@@ -332,6 +327,42 @@ protected:
 		// after the query value or empty slot.
 		index = currentIndex;
 		return false;
+	}
+
+	static void insertIntoTable(typename SubTable::Pair*const begin, const size_t capacity, VALUE_T&& value, const size_t index, const size_t targetIndex) {
+		// Insert (value,targetIndex) at index and shift anything down to make room, if needed.
+		assert(index < capacity);
+
+		typename SubTable::Pair* current = begin + index;
+		size_t currentIndex = index;
+		if (current->second == SubTable::EMPTY_INDEX) {
+			// Empty space right away, so just write it.
+			current->first = std::move(value);
+			current->second = targetIndex;
+			return;
+		}
+
+		typename SubTable::Pair previous = std::move(*current);
+		current->first = std::move(value);
+		current->second = targetIndex;
+
+		// Shift pairs forward.
+		while (true) {
+			++current;
+			++currentIndex;
+			if (currentIndex == capacity) {
+				current = begin;
+				currentIndex = 0;
+			}
+			// If we've reached targetIndex, there's something wrong with the table.
+			assert(currentIndex != targetIndex);
+			if (current->second == SubTable::EMPTY_INDEX) {
+				// Found empty space, so write the final pair.
+				*current = std::move(previous);
+				break;
+			}
+			std::swap(previous, *current);
+		}
 	}
 
 	SubTable* getSubTableAndCode(uint64& hashCode) const {
@@ -458,7 +489,7 @@ protected:
 				size_t insertIndex;
 				size_t sourceTargetIndex;
 				findInTable<false>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
-				insertInTable(newData, newCapacity, std::move(source), insertIndex, sourceTargetIndex);
+				insertIntoTable(newData, newCapacity, std::move(source), insertIndex, sourceTargetIndex);
 			}
 			findInTable<false>(newData, newCapacity, hashCode, value, index, targetIndex);
 			delete [] data;
@@ -468,7 +499,7 @@ protected:
 			subTable->capacity = newCapacity;
 		}
 
-		insertInTable(data, capacity, std::move(value), index, targetIndex);
+		insertIntoTable(data, capacity, std::move(value), index, targetIndex);
 
 		if (accessor == nullptr) {
 			subTable->stopWriting();
