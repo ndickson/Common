@@ -175,9 +175,9 @@ protected:
 	template<bool WRITE_ACCESS>
 	class accessor_base {
 		SubTable* subTable = nullptr;
-		const VALUE_T* item = nullptr;
+		const typename SubTable::Pair* item = nullptr;
 
-		void init(SubTable* subTable_, const VALUE_T* item_) {
+		void init(SubTable* subTable_, const typename SubTable::Pair* item_) {
 			subTable = subTable_;
 			item = item_;
 		}
@@ -205,10 +205,10 @@ protected:
 		}
 
 		const VALUE_T& operator*() const {
-			return *item;
+			return item->first;
 		}
 		const VALUE_T* operator->() const {
-			return item;
+			return &(item->first);
 		}
 
 		bool empty() const {
@@ -365,6 +365,36 @@ protected:
 		}
 	}
 
+	static void eraseFromTable(typename SubTable::Pair*const begin, const size_t capacity, typename SubTable::Pair* current, size_t currentIndex) {
+		assert(current->second != SubTable::EMPTY_INDEX);
+
+		while (true) {
+			typename SubTable::Pair* next = current + 1;
+			size_t nextIndex = currentIndex + 1;
+			if (nextIndex == capacity) {
+				nextIndex = 0;
+				next = begin;
+			}
+
+			size_t nextTargetIndex = next->second;
+			if (nextTargetIndex == SubTable::EMPTY_INDEX || nextTargetIndex == nextIndex) {
+				// Empty item or item in correct place, so this is the
+				// end of the span of displaced items.
+				break;
+			}
+
+			// Move the next item back.
+			*current = std::move(*next);
+
+			current = next;
+			currentIndex = nextIndex;
+		}
+
+		// Overwrite last item in span to clear it.
+		current->first = VALUE_T();
+		current->second = SubTable::EMPTY_INDEX;
+	}
+
 	SubTable* getSubTableAndCode(uint64& hashCode) const {
 		SubTable* subTable = subTables[hashCode & SUB_TABLE_MASK];
 		hashCode >>= SUB_TABLE_BITS;
@@ -406,7 +436,7 @@ protected:
 			return false;
 		}
 
-		accessor.init(subTable, &(data[index].first));
+		accessor.init(subTable, data + index);
 		return true;
 	}
 
@@ -430,12 +460,13 @@ protected:
 			data = subTable->data;
 
 			// NOTE: findInTable will check for null again, which is necessary.
-			// FIXME: Use the search from findInTable to find the location
-			// where an item should be inserted!!!
+			// Use the search from findInTable to find the location
+			// where an item should be inserted and also check if an equal value
+			// is already in the set.
 			bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
 
 			if (found) {
-				accessor.init(subTable, &(data[index].first));
+				accessor.init(subTable, data + index);
 
 				// It's already in the set, so value was not inserted.
 				return false;
@@ -464,7 +495,7 @@ protected:
 
 			bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
 			if (found) {
-				accessor.init(subTable, &(data[index].first));
+				accessor.init(subTable, data + index);
 
 				// It's already in the set, so value was not inserted.
 				return false;
@@ -505,11 +536,58 @@ protected:
 			subTable->stopWriting();
 		}
 		else {
-			accessor->init(subTable, &(data[index].first));
+			accessor->init(subTable, data + index);
 			subTable->changeFromWriteToRead();
 		}
-		assert(0);
-		// FIXME: Implement this!!!
+	}
+
+	bool eraseInternal(accessor& accessor) {
+		SubTable* subTable = accessor.subTable;
+		if (subTable == nullptr) {
+			// accessor is not associated with an item, so there's nothing to erase.
+			assert(accessor.item == nullptr);
+			return false;
+		}
+		assert(accessor.item != nullptr);
+
+		typename SubTable::Pair* data = subTable->data;
+		typename SubTable::Pair* current = accessor.item;
+		eraseFromTable(data, subTable->capacity, current, current - data);
+
+		accessor.release();
+
+		return true;
+	}
+
+	bool eraseInternal(const VALUE_T& value) {
+		uint64 hashCode = Hasher::hash(value);
+		SubTable* subTable = getSubTableAndCode(hashCode);
+
+		if (subTable->data == nullptr) {
+			return false;
+		}
+
+		// For simplicity, always get write access up front,
+		// since it seems unlikely that callers would be
+		// frequently erasing values that are not in the map.
+		subTable->startWriting();
+
+		size_t capacity = subTable->capacity;
+		typename SubTable::Pair* data = subTable->data;
+
+		size_t index;
+		size_t targetIndex;
+
+		// NOTE: findInTable will check for null again, which is necessary.
+		bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+
+		if (found) {
+			eraseFromTable(data, capacity, data + index, index);
+		}
+
+		subTable->stopWriting();
+
+		return found;
 	}
 
 public:
@@ -547,16 +625,20 @@ public:
 		return insertCommon(nullptr, value);
 	}
 
-	// Remove the item referenced by the const_accessor from the set.
-	// If there was an item referenced by the const_accessor, this returns true.
-	// If there was no item referenced by the const_accessor,
+	// Remove the item referenced by the accessor from the set.
+	// If there was an item referenced by the accessor, this returns true.
+	// If there was no item referenced by the accessor,
 	// (and so no item was removed), this returns false.
-	// Afterwards, the const_accessor is always not referencing an item.
-	bool erase(accessor& accessor);
+	// Afterwards, the accessor is always not referencing an item.
+	bool erase(accessor& accessor) {
+		return eraseInternal(accessor);
+	}
 
 	// Remove any item from the set that is equal to the given value.
 	// If an item was removed, this returns true, else false.
-	bool erase(const VALUE_T& value);
+	bool erase(const VALUE_T& value) {
+		return eraseInternal(value);
+	}
 };
 
 COMMON_LIBRARY_NAMESPACE_END
