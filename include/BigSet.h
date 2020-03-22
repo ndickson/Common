@@ -182,15 +182,23 @@ protected:
 	constexpr static size_t NUM_SUB_TABLES = size_t(1) << SUB_TABLE_BITS;
 	constexpr static size_t SUB_TABLE_MASK = NUM_SUB_TABLES - 1;
 
-	template<bool WRITE_ACCESS,typename ACCESSOR_VALUE_T>
+	[[nodiscard]] INLINE SubTable* getSubTableAndCode(uint64& hashCode) const noexcept {
+		size_t tablei = size_t(hashCode & SUB_TABLE_MASK);
+		hashCode >>= SUB_TABLE_BITS;
+		return subTables.get() + tablei;
+	}
+
+	template<bool WRITE_ACCESS,typename ACCESSOR_VALUE_T,typename INTERNAL_T>
 	class accessor_base {
 		SubTable* subTable = nullptr;
-		const TablePair* item = nullptr;
+		INTERNAL_T* item = nullptr;
 
-		void init(SubTable* subTable_, const TablePair* item_) {
+		void init(SubTable* subTable_, INTERNAL_T* item_) {
 			subTable = subTable_;
 			item = item_;
 		}
+
+		friend BigSet;
 	public:
 		INLINE accessor_base() = default;
 
@@ -228,13 +236,13 @@ protected:
 
 public:
 
-	using const_accessor = accessor_base<false, const VALUE_T>;
+	using const_accessor = accessor_base<false, const VALUE_T, const TablePair>;
 
 	// The set interface doesn't allow modifying items that are in the set,
 	// in case changing them would change the hash code or make them equal
 	// to other items in the set, so this only differs from
 	// const_accessor in the ability to call erase, since it has write access.
-	using accessor = accessor_base<true, const VALUE_T>;
+	using accessor = accessor_base<true, const VALUE_T, TablePair>;
 
 protected:
 	template<typename SET_T,typename ACCESSOR_T,typename KEY_T>
@@ -256,12 +264,12 @@ protected:
 		}
 
 		const size_t capacity = subTable->capacity;
-		const TablePair* data = subTable->data;
+		TablePair* data = subTable->data;
 
 		// NOTE: findInTable will check for null again, which is necessary.
 		size_t index;
 		size_t targetIndex;
-		bool found = hash::findInTable<true>(data, capacity, hashCode, key, index, targetIndex);
+		bool found = hash::findInTable<true, KEY_T, Hasher>(data, capacity, hashCode, key, index, targetIndex);
 		if (!found) {
 			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
 				subTable->stopReading();
@@ -276,34 +284,40 @@ protected:
 		return true;
 	}
 
-	template<typename ACCESSOR_T>
-	bool insertCommon(ACCESSOR_T* accessor, const VALUE_T& value) {
+	template<typename VALUE_REF_T,typename ACCESSOR_T>
+	bool insertCommon(ACCESSOR_T* accessor, VALUE_REF_T value) {
 		uint64 hashCode = Hasher::hash(value);
 		SubTable* subTable = getSubTableAndCode(hashCode);
 
 		size_t capacity;
-		const TablePair* data;
+		TablePair* data = subTable->data;
 		size_t index;
 		size_t targetIndex = SubTable::EMPTY_INDEX;
 		bool changedFromReadToWrite = false;
 
-		if (std::is_same<ACCESSOR_T,const_accessor>::value && subTable->data != nullptr) {
+		if (std::is_same<ACCESSOR_T,const_accessor>::value && data != nullptr) {
 			// First, check if the item is in the map via reading,
 			// so that if it's very common that the item is already in the set,
 			// multiple threads can check at the same time.
 			subTable->startReading();
 
-			capacity = subTable->capacity;
+			// Re-read subTable->data, now that we have read access.
 			data = subTable->data;
+			capacity = subTable->capacity;
 
 			// NOTE: findInTable will check for null again, which is necessary.
 			// Use the search from findInTable to find the location
 			// where an item should be inserted and also check if an equal value
 			// is already in the set.
-			bool found = hash::findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, value, index, targetIndex);
 
 			if (found) {
-				accessor.init(subTable, data + index);
+				if (accessor == nullptr) {
+					subTable->stopReading();
+				}
+				else {
+					accessor->init(subTable, data + index);
+				}
 
 				// It's already in the set, so value was not inserted.
 				return false;
@@ -330,12 +344,18 @@ protected:
 			capacity = subTable->capacity;
 			data = subTable->data;
 
-			bool found = hash::findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, value, index, targetIndex);
 			if (found) {
-				accessor.init(subTable, data + index);
-				if (std::is_same<ACCESSOR_T,const_accessor>::value) {
-					subTable->changeFromWriteToRead();
+				if (accessor == nullptr) {
+					subTable->stopWriting();
 				}
+				else {
+					accessor->init(subTable, data + index);
+					if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+						subTable->changeFromWriteToRead();
+					}
+				}
+
 				// It's already in the set, so value was not inserted.
 				return false;
 			}
@@ -358,11 +378,11 @@ protected:
 				if (source.second == SubTable::EMPTY_INDEX) {
 					continue;
 				}
-				size_t sourceHashCode = Hasher::hash(source);
+				size_t sourceHashCode = Hasher::hash(source.first);
 				size_t insertIndex;
 				size_t sourceTargetIndex;
 				hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
-				hash::insertIntoTable(newData, newCapacity, std::move(source), insertIndex, sourceTargetIndex);
+				hash::insertIntoTable(newData, newCapacity, std::move(source.first), insertIndex, sourceTargetIndex);
 			}
 			hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, hashCode, value, index, targetIndex);
 			delete [] data;
@@ -383,6 +403,7 @@ protected:
 				subTable->changeFromWriteToRead();
 			}
 		}
+		return true;
 	}
 
 	bool eraseInternal(accessor& accessor) {
@@ -459,7 +480,10 @@ public:
 	// If the insertion succeeded, this returns true.
 	// If there was already an equal item in the set, this returns false.
 	INLINE bool insert(const VALUE_T& value) {
-		return insertCommon(nullptr, value);
+		return insertCommon<const VALUE_T&>(static_cast<const_accessor*>(nullptr), value);
+	}
+	INLINE bool insert(VALUE_T&& value) {
+		return insertCommon<VALUE_T&&>(static_cast<const_accessor*>(nullptr), std::move(value));
 	}
 
 	// Insert the value into the set and acquire a const_accessor to it.
@@ -467,7 +491,10 @@ public:
 	// If there was already an equal item in the set, a const_accessor
 	// to the existing item is acquired, and this returns false.
 	INLINE bool insert(const_accessor& accessor, const VALUE_T& value) {
-		return insertCommon(&accessor, value);
+		return insertCommon<const VALUE_T&>(&accessor, value);
+	}
+	INLINE bool insert(const_accessor& accessor, VALUE_T&& value) {
+		return insertCommon<VALUE_T&&>(&accessor, value);
 	}
 
 	// Insert the value into the set and acquire an accessor to it.
@@ -475,7 +502,10 @@ public:
 	// If there was already an equal item in the set, an accessor
 	// to the existing item is acquired, and this returns false.
 	INLINE bool insert(accessor& accessor, const VALUE_T& value) {
-		return insertCommon(&accessor, value);
+		return insertCommon<const VALUE_T&>(&accessor, value);
+	}
+	INLINE bool insert(accessor& accessor, VALUE_T&& value) {
+		return insertCommon<VALUE_T&&>(&accessor, std::move(value));
 	}
 
 	// Remove the item referenced by the accessor from the set.
