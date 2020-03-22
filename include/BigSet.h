@@ -1,11 +1,14 @@
 #pragma once
 
 #include "Types.h"
+#include "HashUtil.h"
 
 #include <assert.h>
 #include <atomic>
+#include <chrono>
 #include <memory>
-#include <utility>
+#include <thread>
+#include <type_traits>
 
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
@@ -18,6 +21,8 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 template<typename VALUE_T, typename Hasher = DefaultHasher<VALUE_T>>
 class BigSet {
 protected:
+	using TablePair = hash::Pair<VALUE_T>;
+
 	// To reduce memory contention, make sure
 	// that each of the atomic values is in a separate
 	// 64-byte primary cache line.
@@ -27,10 +32,9 @@ protected:
 		volatile size_t capacity;
 
 		// The size_t of each pair is the current target index in this sub-table.
-		using Pair = std::pair<VALUE_T,size_t>;
-		Pair*volatile data;
+		TablePair*volatile data;
 
-		constexpr static size_t EMPTY_INDEX = ~size_t(0);
+		constexpr static size_t EMPTY_INDEX = hash::EMPTY_INDEX;
 
 		SubTable() : numReaders(0), size(0), capacity(0), data(nullptr) {}
 
@@ -40,11 +44,17 @@ protected:
 		}
 
 		static void backOff(size_t& attempt) {
-			if (attempt < 16) {
-				++attempt;
-				return;
+			if (attempt >= 16) {
+				if (attempt < 32) {
+					// Give up this timeslice.
+					std::this_thread::yield();
+				}
+				else {
+					// Sleep, in case this is waiting for lower priority threads.
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
 			}
-			ReleaseTimeSlice();
+			++attempt;
 		}
 
 		void startReading() {
@@ -172,12 +182,12 @@ protected:
 	constexpr static size_t NUM_SUB_TABLES = size_t(1) << SUB_TABLE_BITS;
 	constexpr static size_t SUB_TABLE_MASK = NUM_SUB_TABLES - 1;
 
-	template<bool WRITE_ACCESS>
+	template<bool WRITE_ACCESS,typename ACCESSOR_VALUE_T>
 	class accessor_base {
 		SubTable* subTable = nullptr;
-		const typename SubTable::Pair* item = nullptr;
+		const TablePair* item = nullptr;
 
-		void init(SubTable* subTable_, const typename SubTable::Pair* item_) {
+		void init(SubTable* subTable_, const TablePair* item_) {
 			subTable = subTable_;
 			item = item_;
 		}
@@ -188,7 +198,7 @@ protected:
 			release();
 		}
 
-		using value_type = const VALUE_T;
+		using value_type = ACCESSOR_VALUE_T;
 
 		void release() {
 			if (subTable == nullptr) {
@@ -204,11 +214,11 @@ protected:
 			item = nullptr;
 		}
 
-		const VALUE_T& operator*() const {
-			return item->first;
+		value_type& operator*() const {
+			return reinterpret_cast<value_type&>(item->first);
 		}
-		const VALUE_T* operator->() const {
-			return &(item->first);
+		value_type* operator->() const {
+			return reinterpret_cast<value_type*>(&(item->first));
 		}
 
 		bool empty() const {
@@ -218,192 +228,18 @@ protected:
 
 public:
 
-	using const_accessor = accessor_base<false>;
+	using const_accessor = accessor_base<false, const VALUE_T>;
 
 	// The set interface doesn't allow modifying items that are in the set,
 	// in case changing them would change the hash code or make them equal
-	// to other items in the map, so this only differs from
+	// to other items in the set, so this only differs from
 	// const_accessor in the ability to call erase, since it has write access.
-	using accessor = accessor_base<true>;
+	using accessor = accessor_base<true, const VALUE_T>;
 
 protected:
-
-	template<bool CHECK_EQUAL>
-	static bool findInTable(const typename SubTable::Pair*const begin, const size_t capacity, uint64 hashCode, const VALUE_T& value, size_t& index, size_t& targetIndex) {
-		if (begin == nullptr) {
-			assert(capacity == 0);
-			index = SubTable::EMPTY_INDEX;
-			return false;
-		}
-		assert(capacity != 0);
-
-		targetIndex = size_t(hashCode % capacity);
-		size_t currentIndex = targetIndex;
-
-		const typename SubTable::Pair* current = begin + currentIndex;
-		size_t currentTargetIndex = current->second;
-
-		// The most common cases are immediately hitting an empty slot
-		// or immediately finding a match.
-		if (currentTargetIndex == SubTable::EMPTY_INDEX) {
-			// Empty slot, so not found
-			index = currentIndex;
-			return false;
-		}
-		if (CHECK_EQUAL && (currentTargetIndex == targetIndex) && Hasher::equals(current->first, value)) {
-			// Found an equal item, so return its index.
-			index = currentIndex;
-			return true;
-		}
-
-		// If the starting index is in a wrap-around region, skip it
-		// by finding the first item with a lower target index.
-		bool insideWrapAround = (currentTargetIndex > targetIndex);
-		if (insideWrapAround) {
-			do {
-				++current;
-				++currentIndex;
-
-				// NOTE: currentIndex should never reach the capacity here,
-				// since a wrap-around region should never reach the end.
-				assert(currentIndex != capacity);
-				// NOTE: currentIndex also should never reach targetIndex,
-				// since it doesn't wrap back there
-				assert(currentIndex != targetIndex);
-
-				size_t newTargetIndex = current->second;
-				// This check for empty index is necessary here,
-				// since EMPTY_INDEX is greater than any valid target index.
-				if (newTargetIndex == SubTable::EMPTY_INDEX) {
-					index = currentIndex;
-					return false;
-				}
-				insideWrapAround = (newTargetIndex >= currentTargetIndex);
-				currentTargetIndex = newTargetIndex;
-			} while (insideWrapAround);
-		}
-		else {
-			++current;
-			++currentIndex;
-			if (currentIndex == capacity) {
-				currentIndex = 0;
-				current = begin;
-			}
-			if (currentIndex == targetIndex) {
-				// Wrapped all the way around, (table must be capacity 1),
-				// so item wasn't found.
-				index = currentIndex;
-				return false;
-			}
-			currentTargetIndex = current->second;
-		}
-
-		// NOTE: The empty slot index condition is actually redundant,
-		// since the value of EMPTY_INDEX is gerater than any targetIndex.
-		while (currentTargetIndex <= targetIndex && currentTargetIndex != SubTable::EMPTY_INDEX) {
-			if (CHECK_EQUAL && (currentTargetIndex == targetIndex) && Hasher::equals(current->first, value)) {
-				// Found an equal item, so return its index.
-				index = currentIndex;
-				return true;
-			}
-
-			++current;
-			++currentIndex;
-			if (currentIndex == capacity) {
-				currentIndex = 0;
-				current = begin;
-			}
-			if (currentIndex == targetIndex) {
-				// Wrapped all the way around, (table must be completely full),
-				// so item wasn't found.
-				index = currentIndex;
-				return false;
-			}
-			currentTargetIndex = current->second;
-		}
-
-
-		// Not in a wrap around and reached something that belongs
-		// after the query value or empty slot.
-		index = currentIndex;
-		return false;
-	}
-
-	static void insertIntoTable(typename SubTable::Pair*const begin, const size_t capacity, VALUE_T&& value, const size_t index, const size_t targetIndex) {
-		// Insert (value,targetIndex) at index and shift anything down to make room, if needed.
-		assert(index < capacity);
-
-		typename SubTable::Pair* current = begin + index;
-		size_t currentIndex = index;
-		if (current->second == SubTable::EMPTY_INDEX) {
-			// Empty space right away, so just write it.
-			current->first = std::move(value);
-			current->second = targetIndex;
-			return;
-		}
-
-		typename SubTable::Pair previous = std::move(*current);
-		current->first = std::move(value);
-		current->second = targetIndex;
-
-		// Shift pairs forward.
-		while (true) {
-			++current;
-			++currentIndex;
-			if (currentIndex == capacity) {
-				current = begin;
-				currentIndex = 0;
-			}
-			// If we've reached targetIndex, there's something wrong with the table.
-			assert(currentIndex != targetIndex);
-			if (current->second == SubTable::EMPTY_INDEX) {
-				// Found empty space, so write the final pair.
-				*current = std::move(previous);
-				break;
-			}
-			std::swap(previous, *current);
-		}
-	}
-
-	static void eraseFromTable(typename SubTable::Pair*const begin, const size_t capacity, typename SubTable::Pair* current, size_t currentIndex) {
-		assert(current->second != SubTable::EMPTY_INDEX);
-
-		while (true) {
-			typename SubTable::Pair* next = current + 1;
-			size_t nextIndex = currentIndex + 1;
-			if (nextIndex == capacity) {
-				nextIndex = 0;
-				next = begin;
-			}
-
-			size_t nextTargetIndex = next->second;
-			if (nextTargetIndex == SubTable::EMPTY_INDEX || nextTargetIndex == nextIndex) {
-				// Empty item or item in correct place, so this is the
-				// end of the span of displaced items.
-				break;
-			}
-
-			// Move the next item back.
-			*current = std::move(*next);
-
-			current = next;
-			currentIndex = nextIndex;
-		}
-
-		// Overwrite last item in span to clear it.
-		current->first = VALUE_T();
-		current->second = SubTable::EMPTY_INDEX;
-	}
-
-	SubTable* getSubTableAndCode(uint64& hashCode) const {
-		SubTable* subTable = subTables[hashCode & SUB_TABLE_MASK];
-		hashCode >>= SUB_TABLE_BITS;
-		return subTable;
-	}
-
-	template<typename SET_T,typename ACCESSOR_T>
-	static bool findCommon(SET_T& set, ACCESSOR_T& accessor, const VALUE_T& value) {
-		uint64 hashCode = Hasher::hash(value);
+	template<typename SET_T,typename ACCESSOR_T,typename KEY_T>
+	static bool findCommon(SET_T& set, ACCESSOR_T& accessor, const KEY_T& key) {
+		uint64 hashCode = Hasher::hash(key);
 		SubTable* subTable = set.getSubTableAndCode(hashCode);
 
 		// If the sub-table is null or empty, we can even avoid getting read access,
@@ -420,12 +256,12 @@ protected:
 		}
 
 		const size_t capacity = subTable->capacity;
-		const typename SubTable::Pair* data = subTable->data;
+		const TablePair* data = subTable->data;
 
 		// NOTE: findInTable will check for null again, which is necessary.
 		size_t index;
 		size_t targetIndex;
-		bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+		bool found = hash::findInTable<true>(data, capacity, hashCode, key, index, targetIndex);
 		if (!found) {
 			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
 				subTable->stopReading();
@@ -440,17 +276,18 @@ protected:
 		return true;
 	}
 
-	bool insertCommon(const_accessor* accessor, const VALUE_T& value) {
+	template<typename ACCESSOR_T>
+	bool insertCommon(ACCESSOR_T* accessor, const VALUE_T& value) {
 		uint64 hashCode = Hasher::hash(value);
 		SubTable* subTable = getSubTableAndCode(hashCode);
 
 		size_t capacity;
-		const typename SubTable::Pair* data;
+		const TablePair* data;
 		size_t index;
 		size_t targetIndex = SubTable::EMPTY_INDEX;
 		bool changedFromReadToWrite = false;
 
-		if (subTable->data != nullptr) {
+		if (std::is_same<ACCESSOR_T,const_accessor>::value && subTable->data != nullptr) {
 			// First, check if the item is in the map via reading,
 			// so that if it's very common that the item is already in the set,
 			// multiple threads can check at the same time.
@@ -463,7 +300,7 @@ protected:
 			// Use the search from findInTable to find the location
 			// where an item should be inserted and also check if an equal value
 			// is already in the set.
-			bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
 
 			if (found) {
 				accessor.init(subTable, data + index);
@@ -493,10 +330,12 @@ protected:
 			capacity = subTable->capacity;
 			data = subTable->data;
 
-			bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
 			if (found) {
 				accessor.init(subTable, data + index);
-
+				if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+					subTable->changeFromWriteToRead();
+				}
 				// It's already in the set, so value was not inserted.
 				return false;
 			}
@@ -509,20 +348,23 @@ protected:
 
 		if ((size > capacity) || ((index != targetIndex) && (size > (capacity>>1)))) {
 			// Allocate a new table with a larger capacity and rehash.
-			size_t newCapacity = nextHashPrime(capacity+1);
-			typename SubTable::Pair* newData = new typename SubTable::Pair[newCapacity];
+			size_t newCapacity = hash::nextPrimeCapacity(capacity+1);
+			TablePair* newData = new TablePair[newCapacity];
 			for (size_t desti = 0; desti != newCapacity; ++desti) {
 				newData[desti].second = SubTable::EMPTY_INDEX;
 			}
 			for (size_t sourcei = 0; sourcei != capacity; ++sourcei) {
-				typename SubTable::Pair& source = data[sourcei];
+				TablePair& source = data[sourcei];
+				if (source.second == SubTable::EMPTY_INDEX) {
+					continue;
+				}
 				size_t sourceHashCode = Hasher::hash(source);
 				size_t insertIndex;
 				size_t sourceTargetIndex;
-				findInTable<false>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
-				insertIntoTable(newData, newCapacity, std::move(source), insertIndex, sourceTargetIndex);
+				hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
+				hash::insertIntoTable(newData, newCapacity, std::move(source), insertIndex, sourceTargetIndex);
 			}
-			findInTable<false>(newData, newCapacity, hashCode, value, index, targetIndex);
+			hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, hashCode, value, index, targetIndex);
 			delete [] data;
 			data = newData;
 			subTable->data = newData;
@@ -530,14 +372,16 @@ protected:
 			subTable->capacity = newCapacity;
 		}
 
-		insertIntoTable(data, capacity, std::move(value), index, targetIndex);
+		hash::insertIntoTable(data, capacity, std::move(value), index, targetIndex);
 
 		if (accessor == nullptr) {
 			subTable->stopWriting();
 		}
 		else {
 			accessor->init(subTable, data + index);
-			subTable->changeFromWriteToRead();
+			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+				subTable->changeFromWriteToRead();
+			}
 		}
 	}
 
@@ -550,17 +394,18 @@ protected:
 		}
 		assert(accessor.item != nullptr);
 
-		typename SubTable::Pair* data = subTable->data;
-		typename SubTable::Pair* current = accessor.item;
-		eraseFromTable(data, subTable->capacity, current, current - data);
+		TablePair* data = subTable->data;
+		TablePair* current = accessor.item;
+		hash::eraseFromTable(data, subTable->capacity, current, current - data);
 
 		accessor.release();
 
 		return true;
 	}
 
-	bool eraseInternal(const VALUE_T& value) {
-		uint64 hashCode = Hasher::hash(value);
+	template<typename KEY_T>
+	bool eraseInternal(const KEY_T& key) {
+		uint64 hashCode = Hasher::hash(key);
 		SubTable* subTable = getSubTableAndCode(hashCode);
 
 		if (subTable->data == nullptr) {
@@ -573,16 +418,16 @@ protected:
 		subTable->startWriting();
 
 		size_t capacity = subTable->capacity;
-		typename SubTable::Pair* data = subTable->data;
+		TablePair* data = subTable->data;
 
 		size_t index;
 		size_t targetIndex;
 
 		// NOTE: findInTable will check for null again, which is necessary.
-		bool found = findInTable<true>(data, capacity, hashCode, value, index, targetIndex);
+		bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, key, index, targetIndex);
 
 		if (found) {
-			eraseFromTable(data, capacity, data + index, index);
+			hash::eraseFromTable(data, capacity, data + index, index);
 		}
 
 		subTable->stopWriting();
@@ -595,7 +440,7 @@ public:
 
 	// Find the value in the set and acquire a const_accessor to it.
 	// If there is an equal item in the set, this returns true, else false.
-	bool find(const_accessor& accessor, const VALUE_T& value) const {
+	INLINE bool find(const_accessor& accessor, const VALUE_T& value) const {
 		return findCommon(*this, accessor, value);
 	}
 
@@ -606,23 +451,31 @@ public:
 	// call erase, since the set interface doesn't allow changing items,
 	// in case the hash code would change.  Because it aquires write access,
 	// it may also be slower if there's contention.
-	bool find(accessor& accessor, const VALUE_T& value) {
+	INLINE bool find(accessor& accessor, const VALUE_T& value) {
 		return findCommon(*this, accessor, value);
+	}
+
+	// Insert the value into the set, when an accessor is not needed.
+	// If the insertion succeeded, this returns true.
+	// If there was already an equal item in the set, this returns false.
+	INLINE bool insert(const VALUE_T& value) {
+		return insertCommon(nullptr, value);
 	}
 
 	// Insert the value into the set and acquire a const_accessor to it.
 	// If the insertion succeeded, this returns true.
 	// If there was already an equal item in the set, a const_accessor
 	// to the existing item is acquired, and this returns false.
-	bool insert(const_accessor& accessor, const VALUE_T& value) {
+	INLINE bool insert(const_accessor& accessor, const VALUE_T& value) {
 		return insertCommon(&accessor, value);
 	}
 
-	// Insert the value into the set, when an accessor is not needed.
+	// Insert the value into the set and acquire an accessor to it.
 	// If the insertion succeeded, this returns true.
-	// If there was already an equal item in the set, this returns false.
-	bool insert(const VALUE_T& value) {
-		return insertCommon(nullptr, value);
+	// If there was already an equal item in the set, an accessor
+	// to the existing item is acquired, and this returns false.
+	INLINE bool insert(accessor& accessor, const VALUE_T& value) {
+		return insertCommon(&accessor, value);
 	}
 
 	// Remove the item referenced by the accessor from the set.
@@ -630,13 +483,13 @@ public:
 	// If there was no item referenced by the accessor,
 	// (and so no item was removed), this returns false.
 	// Afterwards, the accessor is always not referencing an item.
-	bool erase(accessor& accessor) {
+	INLINE bool erase(accessor& accessor) {
 		return eraseInternal(accessor);
 	}
 
 	// Remove any item from the set that is equal to the given value.
 	// If an item was removed, this returns true, else false.
-	bool erase(const VALUE_T& value) {
+	INLINE bool erase(const VALUE_T& value) {
 		return eraseInternal(value);
 	}
 };
