@@ -120,15 +120,19 @@ class Queue;
 template<typename T, size_t BUF_N>
 class BufQueue;
 
+template<typename T>
+struct DefaultEquals {
+	static INLINE bool equals(const T& a, const T& b) {
+		return (a == b);
+	}
+};
+
 // Specialize this for types that may be used as keys in hash sets or hash maps.
 template<typename T>
 struct DefaultHasher;
 
 template<typename T>
-struct DefaultIntHasher {
-	static INLINE bool equals(const T& a, const T& b) {
-		return (a == b);
-	}
+struct DefaultIntHasher : public DefaultEquals<T> {
 	static INLINE uint64 hash(const T& a) {
 		return uint64(a);
 	}
@@ -144,10 +148,7 @@ template<> struct DefaultHasher<int64> : public DefaultIntHasher<int64> {};
 template<> struct DefaultHasher<uint64> : public DefaultIntHasher<uint64> {};
 
 template<typename T>
-struct DefaultHasher<T*> {
-	static INLINE bool equals(const T* a, const T* b) {
-		return (a == b);
-	}
+struct DefaultHasher<T*> : public DefaultEquals<T*> {
 	static INLINE uint64 hash(const T* a) {
 		// Make sure the low bits are as significant as possible.
 		return uint64(uintptr_t(a) / alignof(T));
