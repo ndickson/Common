@@ -269,7 +269,7 @@ protected:
 		// NOTE: findInTable will check for null again, which is necessary.
 		size_t index;
 		size_t targetIndex;
-		bool found = hash::findInTable<true, KEY_T, Hasher>(data, capacity, hashCode, key, index, targetIndex);
+		bool found = hash::findInTable<true, Hasher>(data, capacity, hashCode, key, index, targetIndex);
 		if (!found) {
 			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
 				subTable->stopReading();
@@ -309,7 +309,7 @@ protected:
 			// Use the search from findInTable to find the location
 			// where an item should be inserted and also check if an equal value
 			// is already in the set.
-			bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true, Hasher>(data, capacity, hashCode, value, index, targetIndex);
 
 			if (found) {
 				if (accessor == nullptr) {
@@ -344,7 +344,7 @@ protected:
 			capacity = subTable->capacity;
 			data = subTable->data;
 
-			bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, value, index, targetIndex);
+			bool found = hash::findInTable<true, Hasher>(data, capacity, hashCode, value, index, targetIndex);
 			if (found) {
 				if (accessor == nullptr) {
 					subTable->stopWriting();
@@ -381,10 +381,10 @@ protected:
 				size_t sourceHashCode = Hasher::hash(source.first);
 				size_t insertIndex;
 				size_t sourceTargetIndex;
-				hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
+				hash::findInTable<false, void>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
 				hash::insertIntoTable(newData, newCapacity, std::move(source.first), insertIndex, sourceTargetIndex);
 			}
-			hash::findInTable<false, VALUE_T, Hasher>(newData, newCapacity, hashCode, value, index, targetIndex);
+			hash::findInTable<false, void>(newData, newCapacity, hashCode, value, index, targetIndex);
 			delete [] data;
 			data = newData;
 			subTable->data = newData;
@@ -406,7 +406,8 @@ protected:
 		return true;
 	}
 
-	bool eraseInternal(accessor& accessor) {
+	template<typename ACCESSOR_T>
+	bool eraseAccessor(ACCESSOR_T& accessor) {
 		SubTable* subTable = accessor.subTable;
 		if (subTable == nullptr) {
 			// accessor is not associated with an item, so there's nothing to erase.
@@ -445,7 +446,7 @@ protected:
 		size_t targetIndex;
 
 		// NOTE: findInTable will check for null again, which is necessary.
-		bool found = hash::findInTable<true, VALUE_T, Hasher>(data, capacity, hashCode, key, index, targetIndex);
+		bool found = hash::findInTable<true, Hasher>(data, capacity, hashCode, key, index, targetIndex);
 
 		if (found) {
 			hash::eraseFromTable(data, capacity, data + index, index);
@@ -514,7 +515,7 @@ public:
 	// (and so no item was removed), this returns false.
 	// Afterwards, the accessor is always not referencing an item.
 	INLINE bool erase(accessor& accessor) {
-		return eraseInternal(accessor);
+		return eraseAccessor(accessor);
 	}
 
 	// Remove any item from the set that is equal to the given value.
