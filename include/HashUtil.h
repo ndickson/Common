@@ -15,8 +15,8 @@ using Pair = std::pair<VALUE_T, size_t>;
 
 constexpr size_t EMPTY_INDEX = ~size_t(0);
 
-template<bool CHECK_EQUAL, typename VALUE_T, typename StaticEquals = DefaultEquals<VALUE_T>>
-static inline bool findInTable(const Pair<VALUE_T>*const begin, const size_t capacity, uint64 hashCode, const VALUE_T& value, size_t& index, size_t& targetIndex) {
+template<bool CHECK_EQUAL, typename StaticEquals, typename VALUE_T, typename KEY_T>
+static inline bool findInTable(const Pair<VALUE_T>*const begin, const size_t capacity, uint64 hashCode, const KEY_T& key, size_t& index, size_t& targetIndex) {
 	if (begin == nullptr) {
 		assert(capacity == 0);
 		index = EMPTY_INDEX;
@@ -37,10 +37,12 @@ static inline bool findInTable(const Pair<VALUE_T>*const begin, const size_t cap
 		index = currentIndex;
 		return false;
 	}
-	if (CHECK_EQUAL && (currentTargetIndex == targetIndex) && StaticEquals::equals(current->first, value)) {
-		// Found an equal item, so return its index.
-		index = currentIndex;
-		return true;
+	if constexpr (CHECK_EQUAL) {
+		if ((currentTargetIndex == targetIndex) && StaticEquals::equals(current->first, key)) {
+			// Found an equal item, so return its index.
+			index = currentIndex;
+			return true;
+		}
 	}
 
 	// If the starting index is in a wrap-around region, skip it
@@ -88,10 +90,12 @@ static inline bool findInTable(const Pair<VALUE_T>*const begin, const size_t cap
 	// NOTE: The empty slot index condition is actually redundant,
 	// since the value of EMPTY_INDEX is gerater than any targetIndex.
 	while (currentTargetIndex <= targetIndex && currentTargetIndex != EMPTY_INDEX) {
-		if (CHECK_EQUAL && (currentTargetIndex == targetIndex) && StaticEquals::equals(current->first, value)) {
-			// Found an equal item, so return its index.
-			index = currentIndex;
-			return true;
+		if constexpr (CHECK_EQUAL) {
+			if ((currentTargetIndex == targetIndex) && StaticEquals::equals(current->first, key)) {
+				// Found an equal item, so return its index.
+				index = currentIndex;
+				return true;
+			}
 		}
 
 		++current;
