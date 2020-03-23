@@ -8,27 +8,6 @@
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
 
-// This includes functions for pairs, just looking at the keys,
-// and for keys themselves.
-template<typename KEY_T, typename VALUE_T>
-struct DefaultMapHasher : public DefaultHasher<KEY_T> {
-	using DefaultHasher<KEY_T>::equals;
-	using DefaultHasher<KEY_T>::hash;
-
-	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const std::pair<KEY_T,VALUE_T>& b) {
-		return DefaultHasher<KEY_T>::equals(a.first, b.first);
-	}
-	static INLINE bool equals(const KEY_T& a, const std::pair<KEY_T,VALUE_T>& b) {
-		return DefaultHasher<KEY_T>::equals(a, b.first);
-	}
-	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const KEY_T& b) {
-		return DefaultHasher<KEY_T>::equals(a.first, b);
-	}
-	static INLINE uint64 hash(const std::pair<KEY_T,VALUE_T>& a) {
-		return DefaultHasher<KEY_T>::hash(a.first);
-	}
-};
-
 // This is a hash map designed for very large numbers of items
 // being looked up and added from many threads simultaneously.
 // It has a very large unfront memory footprint, so is best suited
