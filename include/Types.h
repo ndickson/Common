@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <type_traits>
+#include <utility>
 
 #define OUTER_NAMESPACE             ndickson
 #define COMMON_LIBRARY_NAMESPACE    Common
