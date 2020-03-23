@@ -155,6 +155,27 @@ struct DefaultHasher<T*> : public DefaultEquals<T*> {
 	}
 };
 
+// This includes functions for pairs, just looking at the keys,
+// and for keys themselves.
+template<typename KEY_T, typename VALUE_T>
+struct DefaultMapHasher : public DefaultHasher<KEY_T> {
+	using DefaultHasher<KEY_T>::equals;
+	using DefaultHasher<KEY_T>::hash;
+
+	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const std::pair<KEY_T,VALUE_T>& b) {
+		return DefaultHasher<KEY_T>::equals(a.first, b.first);
+	}
+	static INLINE bool equals(const KEY_T& a, const std::pair<KEY_T,VALUE_T>& b) {
+		return DefaultHasher<KEY_T>::equals(a, b.first);
+	}
+	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const KEY_T& b) {
+		return DefaultHasher<KEY_T>::equals(a.first, b);
+	}
+	static INLINE uint64 hash(const std::pair<KEY_T,VALUE_T>& a) {
+		return DefaultHasher<KEY_T>::hash(a.first);
+	}
+};
+
 // Specialize this for types that can be realloc'd, but cannot be memcpy'd.
 // It's primarily types that contain pointers to within their own direct memory
 // that can't be realloc'd, (e.g. BufArray), but not many types have this
