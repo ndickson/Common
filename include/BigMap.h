@@ -25,9 +25,6 @@ public:
 	using const_accessor = typename Base::template accessor_base<false, const MapPair, const typename Base::TablePair>;
 	using accessor = typename Base::template accessor_base<true, std::pair<const KEY_T,VALUE_T>, typename Base::TablePair>;
 
-private:
-
-public:
 	INLINE BigMap() : BigSet<MapPair,Hasher>() {}
 
 	// Find the key in the map and acquire a const_accessor to its item.
@@ -36,9 +33,23 @@ public:
 		return Base::findCommon(*this, accessor, key);
 	}
 
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool find(const_accessor& accessor, const OTHER_T& key) const {
+		return Base::findCommon(*this, accessor, key);
+	}
+
 	// Find the key in the map and acquire an accessor to its item.
 	// If there is an equal key in the map, this returns true, else false.
 	INLINE bool find(accessor& accessor, const KEY_T& key) {
+		return Base::findCommon(*this, accessor, key);
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool find(accessor& accessor, const OTHER_T& key) {
 		return Base::findCommon(*this, accessor, key);
 	}
 
@@ -95,6 +106,13 @@ public:
 	// Remove any item from the set that is equal to the given value.
 	// If an item was removed, this returns true, else false.
 	INLINE bool erase(const KEY_T& key) {
+		return Base::eraseInternal(key);
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool erase(const OTHER_T& key) {
 		return Base::eraseInternal(key);
 	}
 };
