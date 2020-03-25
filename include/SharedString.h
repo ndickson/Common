@@ -146,5 +146,31 @@ public:
 	return data() == that.data();
 }
 
+// This supports all combinations of SharedString and ShallowString.
+template<>
+struct DefaultHasher<SharedString> {
+	static INLINE uint64 hash(const SharedString& a) {
+		return a.hash();
+	}
+	static INLINE uint64 hash(const ShallowString& a) {
+		return a.hash();
+	}
+	static INLINE bool equals(const SharedString& a, const SharedString& b) {
+		return a == b;
+	}
+	static INLINE bool equals(const SharedString& a, const ShallowString& b) {
+		return a == b;
+	}
+	static INLINE bool equals(const ShallowString& a, const SharedString& b) {
+		return a == b;
+	}
+	static INLINE bool equals(const ShallowString& a, const ShallowString& b) {
+		return a == b;
+	}
+};
+
+template<>
+struct DefaultHasher<ShallowString> : public DefaultHasher<SharedString> {};
+
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
