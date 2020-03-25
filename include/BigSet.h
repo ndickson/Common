@@ -207,6 +207,8 @@ protected:
 		}
 
 		using value_type = ACCESSOR_VALUE_T;
+		using pointer = value_type*;
+		using reference = value_type&;
 
 		void release() {
 			if (subTable == nullptr) {
@@ -222,11 +224,11 @@ protected:
 			item = nullptr;
 		}
 
-		value_type& operator*() const {
-			return reinterpret_cast<value_type&>(item->first);
+		reference operator*() const {
+			return reinterpret_cast<reference>(item->first);
 		}
-		value_type* operator->() const {
-			return reinterpret_cast<value_type*>(&(item->first));
+		pointer operator->() const {
+			return reinterpret_cast<pointer>(&(item->first));
 		}
 
 		bool empty() const {
@@ -466,6 +468,13 @@ public:
 		return findCommon(*this, accessor, value);
 	}
 
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool find(const_accessor& accessor, const OTHER_T& value) const {
+		return findCommon(*this, accessor, value);
+	}
+
 	// Find the value in the set and acquire an accessor to it.
 	// If there is an equal item in the set, this returns true, else false.
 	//
@@ -474,6 +483,13 @@ public:
 	// in case the hash code would change.  Because it aquires write access,
 	// it may also be slower if there's contention.
 	INLINE bool find(accessor& accessor, const VALUE_T& value) {
+		return findCommon(*this, accessor, value);
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool find(accessor& accessor, const OTHER_T& value) {
 		return findCommon(*this, accessor, value);
 	}
 
@@ -521,6 +537,13 @@ public:
 	// Remove any item from the set that is equal to the given value.
 	// If an item was removed, this returns true, else false.
 	INLINE bool erase(const VALUE_T& value) {
+		return eraseInternal(value);
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	INLINE bool erase(const OTHER_T& value) {
 		return eraseInternal(value);
 	}
 };
