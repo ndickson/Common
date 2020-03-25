@@ -16,7 +16,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 // This is an array-based hash set, mostly compatible with std::unordered_set,
 // but using a single, large allocation, instead of many, small allocations.
 // It does not offer the same worst-case performance guarantees,
-// but should have better average-case performance.
+// but should have better average-case performance, especially for small sets.
 template<typename VALUE_T, typename Hasher = DefaultHasher<VALUE_T>>
 class Set {
 protected:
@@ -26,16 +26,16 @@ protected:
 	size_t capacity;
 	size_t size_;
 
-	template<typename ITERATOR_VALUE_T>
+	template<typename ITERATOR_VALUE_T,typename INTERNAL_T>
 	class iterator_base {
-		ITERATOR_VALUE_T* current;
+		INTERNAL_T* current;
 		const TablePair* end;
 
-		INLINE iterator_base(ITERATOR_VALUE_T* current_, const TablePair* end_) noexcept : current(current_), end(end_) {}
+		INLINE iterator_base(INTERNAL_T* current_, const TablePair* end_) noexcept : current(current_), end(end_) {}
 
 		friend Set;
 	public:
-		using ThisType = iterator_base<ITERATOR_VALUE_T>;
+		using ThisType = iterator_base<ITERATOR_VALUE_T,INTERNAL_T>;
 
 		INLINE iterator_base() noexcept = default;
 		INLINE iterator_base(ThisType&& that) noexcept = default;
@@ -46,9 +46,9 @@ protected:
 		INLINE ThisType& operator=(const ThisType&) noexcept = default;
 
 		using difference_type = ptrdiff_t;
-		using value_type = decltype(current->first);
-		using pointer = decltype(current->first)*;
-		using reference = decltype(current->first)&;
+		using value_type = ITERATOR_VALUE_T;
+		using pointer = value_type*;
+		using reference = value_type&;
 		using iterator_category = std::forward_iterator_tag;
 
 		// Prefix increment: use this instead of postfix increment.
@@ -82,11 +82,11 @@ protected:
 
 		[[nodiscard]] INLINE reference operator*() const {
 			assert(current < end);
-			return current->first;
+			return reinterpret_cast<reference>(current->first);
 		}
 		[[nodiscard]] INLINE pointer operator->() const {
 			assert(current < end);
-			return &(current->first);
+			return reinterpret_cast<pointer>(&(current->first));
 		}
 
 		[[nodiscard]] INLINE bool isEnd() const {
@@ -100,7 +100,7 @@ public:
 	// in case changing them would change the hash code or make them equal
 	// to other items in the set, so there is no difference between iterator
 	// and const_iterator.
-	using const_iterator = iterator_base<const TablePair>;
+	using const_iterator = iterator_base<const VALUE_T,const TablePair>;
 	using iterator = const_iterator;
 
 	using key_type = VALUE_T;
@@ -163,6 +163,21 @@ protected:
 		);
 	}
 
+	void copyTableFrom(const TablePair* source) noexcept {
+		TablePair* p = data.get();
+		const TablePair* pend = p + capacity;
+		for (; p != pend; ++p, ++source) {
+			*p = *source;
+		}
+	}
+	void markNewEmpty() noexcept {
+		TablePair* p = data.get();
+		const TablePair* pend = p + capacity;
+		for (; p != pend; ++p) {
+			p->second = hash::EMPTY_INDEX;
+		}
+	}
+
 public:
 	INLINE Set() noexcept : data(nullptr), size_(0), capacity(0) {}
 	INLINE ~Set() noexcept = default;
@@ -172,6 +187,26 @@ public:
 		that.capacity = 0;
 	}
 
+	explicit Set(const Set& that) noexcept : data(new TablePair[that.capacity]), size_(that.size_), capacity(that.capacity) {
+		copyTableFrom(that.data.get());
+	}
+
+	Set(size_t bucketCount) noexcept :
+		data((bucketCount == 0) ? nullptr : new TablePair[bucketCount]),
+		size_(0), capacity(bucketCount)
+	{
+		markNewEmpty();
+	}
+
+	template<typename INPUT_ITER>
+	Set(INPUT_ITER it, const INPUT_ITER endIt, size_t bucketCount = 0) noexcept : Set(bucketCount) {
+		insert(it, endIt);
+	}
+
+	Set(std::initializer_list<VALUE_T> list, size_t bucketCount = 0) noexcept : Set(bucketCount) {
+		insert(list);
+	}
+
 	INLINE Set& operator=(Set&& that) noexcept {
 		data.reset(that.data.release());
 		size_ = that.size_;
@@ -179,6 +214,35 @@ public:
 		that.size_ = 0;
 		that.capacity = 0;
 		return *this;
+	}
+
+	Set& operator=(const Set& that) noexcept {
+		if (this == &that) {
+			return;
+		}
+		if (that.data.get() == nullptr) {
+			assert(that.capacity == 0);
+			assert(that.size == 0);
+			if (data.get() != nullptr) {
+				data.reset();
+				capacity = 0;
+				size_ = 0;
+			}
+			return *this;
+		}
+		if (capacity != that.capacity) {
+			assert(that.capacity != 0);
+			data.reset(new TablePair[that.capacity]);
+			capacity = that.capacity;
+		}
+		copyTableFrom(that.data.get());
+		size_ = that.size_;
+		return *this;
+	}
+
+	Set& operator=(std::initializer_list<VALUE_T> list) noexcept {
+		clear();
+		insert(std::move(list));
 	}
 
 	INLINE void swap(Set& that) noexcept {
@@ -256,19 +320,64 @@ public:
 			data.get() + capacity
 		);
 	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	[[nodiscard]] const_iterator find(const OTHER_T& value) const noexcept {
+		size_t index;
+		size_t targetIndex;
+		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, Hasher::hash(value), value, index, targetIndex);
+		return const_iterator(
+			data.get() + (found ? index : capacity),
+			data.get() + capacity
+		);
+	}
+
 	[[nodiscard]] INLINE bool contains(const VALUE_T& value) const noexcept {
 		size_t index;
 		size_t targetIndex;
 		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, Hasher::hash(value), value, index, targetIndex);
 		return found;
 	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	[[nodiscard]] INLINE bool contains(const OTHER_T& value) const noexcept {
+		size_t index;
+		size_t targetIndex;
+		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, Hasher::hash(value), value, index, targetIndex);
+		return found;
+	}
+
 	[[nodiscard]] INLINE size_t count(const VALUE_T& value) const noexcept {
+		return contains(value) ? 1 : 0;
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	[[nodiscard]] INLINE size_t count(const OTHER_T& value) const noexcept {
 		return contains(value) ? 1 : 0;
 	}
 	
 	// There can be at most 1 item equal to value in the set, so this is either
 	// an empty range or a range containing 1 item.
 	[[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const VALUE_T& value) const noexcept {
+		const_iterator it = find(value);
+		if (it.isEnd()) {
+			return std::make_pair(it, it);
+		}
+		const_iterator next = it;
+		++next;
+		return std::make_pair(it, next);
+	}
+
+	// This signature requires both Hasher::hash(const OTHER_T&) and
+	// Hasher::equals(const VALUE_T&,const OTHER_T&)
+	template<typename OTHER_T>
+	[[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const OTHER_T& value) const noexcept {
 		const_iterator it = find(value);
 		if (it.isEnd()) {
 			return std::make_pair(it, it);
@@ -375,6 +484,31 @@ public:
 		rehash(2*targetSize);
 	}
 };
+
+template<typename VALUE_T, typename Hasher>
+bool operator==(const Set<VALUE_T,Hasher>& a, const Set<VALUE_T,Hasher>& b) {
+	if (&a == &b) {
+		return true;
+	}
+	if (a.size() != b.size()) {
+		return false;
+	}
+	if (a.size() == 0) {
+		// No need to iterate if both sets are empty.
+		return true;
+	}
+	for (auto it = a.begin(), endIt = a.end(); it != endIt; ++it) {
+		if (!b.contains(*it)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+template<typename VALUE_T, typename Hasher>
+INLINE bool operator!=(const Set<VALUE_T,Hasher>& a, const Set<VALUE_T,Hasher>& b) {
+	return !(a == b);
+}
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
