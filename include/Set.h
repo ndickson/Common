@@ -17,6 +17,17 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 // but using a single, large allocation, instead of many, small allocations.
 // It does not offer the same worst-case performance guarantees,
 // but should have better average-case performance, especially for small sets.
+//
+// This currently does not have emplace, any functions accepting iterator hints,
+// or the erase signature accepting two iterators, though these may be added later.
+//
+// It also does not have bucket iterator functions, node manipulation functions,
+// allocator-object-related functions, or hasher-object-related functions,
+// because these are not applicable.
+//
+// Also unlike std::unordered_set, Hasher is required to contain two static functions:
+// uint64 hash(const VALUE_T&);
+// bool equals(const VALUE_T&, const VALUE_T&);
 template<typename VALUE_T, typename Hasher = DefaultHasher<VALUE_T>>
 class Set {
 protected:
@@ -31,7 +42,10 @@ protected:
 		INTERNAL_T* current;
 		const TablePair* end;
 
-		INLINE iterator_base(INTERNAL_T* current_, const TablePair* end_) noexcept : current(current_), end(end_) {}
+		INLINE iterator_base(INTERNAL_T* current_, const TablePair* end_) noexcept : current(current_), end(end_) {
+			// The iterator should either be an end iterator or point to a non-empty item slot.
+			assert(current == end || current->second != hash::EMPTY_INDEX);
+		}
 
 		friend Set;
 	public:
@@ -76,7 +90,20 @@ protected:
 			assert(end == that.end);
 			return (current == that.current);
 		}
+		// This allows comparison between iterator and const_iterator,
+		// where they differ in subclasses.
+		template<typename OTHER_VALUE_T,typename OTHER_INTERNAL_T>
+		[[nodiscard]] INLINE bool operator==(const iterator_base<OTHER_VALUE_T,OTHER_INTERNAL_T>& that) const {
+			assert(current <= end);
+			assert(that.current <= that.end);
+			assert(end == that.end);
+			return (current == that.current);
+		}
 		[[nodiscard]] INLINE bool operator!=(const ThisType& that) const {
+			return !(*this == that);
+		}
+		template<typename OTHER_VALUE_T,typename OTHER_INTERNAL_T>
+		[[nodiscard]] INLINE bool operator!=(const iterator_base<OTHER_VALUE_T,OTHER_INTERNAL_T>& that) const {
 			return !(*this == that);
 		}
 
@@ -113,10 +140,34 @@ public:
 	using pointer = value_type*;
 	using const_pointer = const value_type*;
 
+	using hasher = Hasher;
+
 protected:
 
+	void increaseCapacity() noexcept {
+		// Allocate a new table with a larger capacity and rehash.
+		size_t newCapacity = hash::nextPrimeCapacity(capacity+1);
+		TablePair* newData = new TablePair[newCapacity];
+		for (size_t desti = 0; desti != newCapacity; ++desti) {
+			newData[desti].second = hash::EMPTY_INDEX;
+		}
+		for (size_t sourcei = 0; sourcei != capacity; ++sourcei) {
+			TablePair& source = data[sourcei];
+			if (source.second == hash::EMPTY_INDEX) {
+				continue;
+			}
+			size_t sourceHashCode = Hasher::hash(source.first);
+			size_t insertIndex;
+			size_t sourceTargetIndex;
+			hash::findInTable<false, void>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
+			hash::insertIntoTable(newData, newCapacity, std::move(source.first), insertIndex, sourceTargetIndex);
+		}
+		data.reset(newData);
+		capacity = newCapacity;
+	}
+
 	template<typename VALUE_REF_T,typename ITERATOR_T>
-	std::pair<ITERATOR_T,bool> insertCommon(VALUE_REF_T value) {
+	std::pair<ITERATOR_T,bool> insertCommon(VALUE_REF_T value) noexcept {
 		uint64 hashCode = Hasher::hash(value);
 
 		size_t index;
@@ -132,27 +183,10 @@ protected:
 
 		++size_;
 
+		// If there's no collision, no need to increase the capacity, unless the capacity is zero.
 		if ((size_ > capacity) || ((index != targetIndex) && (size_ > (capacity>>1)))) {
-			// Allocate a new table with a larger capacity and rehash.
-			size_t newCapacity = hash::nextPrimeCapacity(capacity+1);
-			TablePair* newData = new TablePair[newCapacity];
-			for (size_t desti = 0; desti != newCapacity; ++desti) {
-				newData[desti].second = hash::EMPTY_INDEX;
-			}
-			for (size_t sourcei = 0; sourcei != capacity; ++sourcei) {
-				TablePair& source = data[sourcei];
-				if (source.second == hash::EMPTY_INDEX) {
-					continue;
-				}
-				size_t sourceHashCode = Hasher::hash(source.first);
-				size_t insertIndex;
-				size_t sourceTargetIndex;
-				hash::findInTable<false, void>(newData, newCapacity, sourceHashCode, source.first, insertIndex, sourceTargetIndex);
-				hash::insertIntoTable(newData, newCapacity, std::move(source.first), insertIndex, sourceTargetIndex);
-			}
-			hash::findInTable<false, void>(newData, newCapacity, hashCode, value, index, targetIndex);
-			data.reset(newData);
-			capacity = newCapacity;
+			increaseCapacity();
+			hash::findInTable<false, void>(data.get(), capacity, hashCode, value, index, targetIndex);
 		}
 
 		hash::insertIntoTable(data.get(), capacity, std::move(value), index, targetIndex);
@@ -161,6 +195,27 @@ protected:
 			ITERATOR_T(data.get() + index, data.get() + capacity),
 			true
 		);
+	}
+
+	template<typename OUTPUT_ITERATOR_T,typename INPUT_ITERATOR_T>
+	OUTPUT_ITERATOR_T eraseCommon(const INPUT_ITERATOR_T& it) noexcept {
+		assert(!it.isEnd() && it.current->second != hash::EMPTY_INDEX);
+		TablePair* pbegin = data.get();
+		size_t index = it.current - pbegin;
+		TablePair* current = pbegin + index;
+		hash::eraseFromTable(pbegin, capacity, current, index);
+		--size_;
+
+		// Find next item if the current bucket hasn't become occupied
+		// by a later item.
+		const TablePair*const pend = pbegin + capacity;
+		while (current->second == hash::EMPTY_INDEX) {
+			++current;
+			if (current != pend) {
+				break;
+			}
+		}
+		return OUTPUT_ITERATOR_T(current, pend);
 	}
 
 	void copyTableFrom(const TablePair* source) noexcept {
@@ -191,7 +246,7 @@ public:
 		copyTableFrom(that.data.get());
 	}
 
-	Set(size_t bucketCount) noexcept :
+	explicit Set(size_t bucketCount) noexcept :
 		data((bucketCount == 0) ? nullptr : new TablePair[bucketCount]),
 		size_(0), capacity(bucketCount)
 	{
@@ -203,7 +258,7 @@ public:
 		insert(it, endIt);
 	}
 
-	Set(std::initializer_list<VALUE_T> list, size_t bucketCount = 0) noexcept : Set(bucketCount) {
+	explicit Set(std::initializer_list<VALUE_T> list, size_t bucketCount = 0) noexcept : Set(bucketCount) {
 		insert(list);
 	}
 
@@ -407,24 +462,8 @@ public:
 		}
 	}
 
-	const_iterator erase(const_iterator it) noexcept {
-		assert(!it.isEnd() && it.current->second != hash::EMPTY_INDEX);
-		TablePair* pbegin = data.get();
-		size_t index = it.current - pbegin;
-		TablePair* current = pbegin + index;
-		hash::eraseFromTable(pbegin, capacity, current, index);
-		--size_;
-
-		// Find next item if the current bucket hasn't become occupied
-		// by a later item.
-		const TablePair*const pend = pbegin + capacity;
-		while (current->second == hash::EMPTY_INDEX) {
-			++current;
-			if (current != pend) {
-				break;
-			}
-		}
-		return const_iterator(current, pend);
+	INLINE const_iterator erase(const const_iterator& it) noexcept {
+		return eraseCommon<const_iterator,const_iterator>(it);
 	}
 	size_t erase(const VALUE_T& value) noexcept {
 		TablePair* pbegin = data.get();
@@ -436,6 +475,7 @@ public:
 		}
 
 		hash::eraseFromTable(pbegin, capacity, pbegin + index, index);
+		--size_;
 		return 1;
 	}
 
