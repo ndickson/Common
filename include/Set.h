@@ -442,11 +442,11 @@ public:
 		return std::make_pair(it, next);
 	}
 
-	std::pair<const_iterator,bool> insert(const VALUE_T& value) noexcept {
+	INLINE std::pair<const_iterator,bool> insert(const VALUE_T& value) noexcept {
 		return insertCommon<const VALUE_T&, const_iterator>(value);
 	}
 
-	std::pair<const_iterator,bool> insert(VALUE_T&& value) noexcept {
+	INLINE std::pair<const_iterator,bool> insert(VALUE_T&& value) noexcept {
 		return insertCommon<VALUE_T&&, const_iterator>(std::move(value));
 	}
 
