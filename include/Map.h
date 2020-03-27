@@ -322,25 +322,25 @@ public:
 		assert(found);
 		return data[index];
 	}
-	[[nodiscard]] VALUE_T& operator[](const KEY_T& key) noexcept {
+	[[nodiscard]] INLINE VALUE_T& operator[](const KEY_T& key) noexcept {
 		auto pair = insertKey<const KEY_T&, iterator>(key);
 		return pair.first->second;
 	}
-	[[nodiscard]] VALUE_T& operator[](KEY_T&& key) noexcept {
+	[[nodiscard]] INLINE VALUE_T& operator[](KEY_T&& key) noexcept {
 		auto pair = insertKey<KEY_T&&, iterator>(std::move(key));
 		return pair.first->second;
 	}
 
-	std::pair<iterator,bool> insert(const KEY_T& key, const VALUE_T& value) noexcept {
+	INLINE std::pair<iterator,bool> insert(const KEY_T& key, const VALUE_T& value) noexcept {
 		return insertKeyValue<const KEY_T&, const VALUE_T&, false>(key, value);
 	}
-	std::pair<iterator,bool> insert(KEY_T&& key, VALUE_T&& value) noexcept {
+	INLINE std::pair<iterator,bool> insert(KEY_T&& key, VALUE_T&& value) noexcept {
 		return insertKeyValue<KEY_T&&, VALUE_T&&, false>(std::move(key), std::move(value));
 	}
-	std::pair<iterator,bool> insert(const MapPair& pair) noexcept {
+	INLINE std::pair<iterator,bool> insert(const MapPair& pair) noexcept {
 		return Base::template insertCommon<const MapPair&, iterator>(pair);
 	}
-	std::pair<iterator,bool> insert(MapPair&& pair) noexcept {
+	INLINE std::pair<iterator,bool> insert(MapPair&& pair) noexcept {
 		return Base::template insertCommon<MapPair&&, iterator>(std::move(pair));
 	}
 	template<typename INPUT_ITER>
@@ -354,10 +354,10 @@ public:
 			insert(*it);
 		}
 	}
-	std::pair<iterator,bool> insert_or_assign(const KEY_T& key, VALUE_T&& value) noexcept {
+	INLINE std::pair<iterator,bool> insert_or_assign(const KEY_T& key, VALUE_T&& value) noexcept {
 		return insertKeyValue<const KEY_T&, VALUE_T&&, true>(key, std::move(value));
 	}
-	std::pair<iterator,bool> insert_or_assign(KEY_T&& key, VALUE_T&& value) noexcept {
+	INLINE std::pair<iterator,bool> insert_or_assign(KEY_T&& key, VALUE_T&& value) noexcept {
 		return insertKeyValue<KEY_T&&, VALUE_T&&, true>(std::move(key), std::move(value));
 	}
 
