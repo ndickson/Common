@@ -558,5 +558,9 @@ INLINE bool operator!=(const Set<VALUE_T,Hasher>& a, const Set<VALUE_T,Hasher>& 
 	return !(a == b);
 }
 
+// Set does not contain self-pointers, so can be realloc'd.
+template<typename VALUE_T, typename Hasher>
+struct is_trivially_relocatable<Set<VALUE_T,Hasher>> : public std::true_type {};
+
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
