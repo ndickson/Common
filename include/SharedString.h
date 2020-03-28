@@ -10,6 +10,7 @@
 #include "Types.h"
 
 #include <type_traits>
+#include <utility>
 
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
@@ -171,6 +172,10 @@ struct DefaultHasher<SharedString> {
 
 template<>
 struct DefaultHasher<ShallowString> : public DefaultHasher<SharedString> {};
+
+INLINE SharedString operator "" _str(const char* text, size_t size) {
+	return SharedString(text, size);
+}
 
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
