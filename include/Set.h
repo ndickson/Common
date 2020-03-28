@@ -39,6 +39,7 @@ protected:
 
 	template<typename ITERATOR_VALUE_T,typename INTERNAL_T>
 	class iterator_base {
+	protected:
 		INTERNAL_T* current;
 		const TablePair* end;
 
@@ -170,13 +171,14 @@ protected:
 	std::pair<ITERATOR_T,bool> insertCommon(VALUE_REF_T value) noexcept {
 		uint64 hashCode = Hasher::hash(value);
 
+		hash::Pair<VALUE_T>* p = data.get();
 		size_t index;
 		size_t targetIndex;
-		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, hashCode, value, index, targetIndex);
+		bool found = hash::findInTable<true, Hasher>(p, capacity, hashCode, value, index, targetIndex);
 		if (found) {
 			// It's already in the set, so value was not inserted.
 			return std::make_pair(
-				ITERATOR_T(data.get() + index, data.get() + capacity),
+				ITERATOR_T(p + index, data.get() + capacity),
 				false
 			);
 		}
@@ -186,13 +188,19 @@ protected:
 		// If there's no collision, no need to increase the capacity, unless the capacity is zero.
 		if ((size_ > capacity) || ((index != targetIndex) && (size_ > (capacity>>1)))) {
 			increaseCapacity();
-			hash::findInTable<false, void>(data.get(), capacity, hashCode, value, index, targetIndex);
+			p = data.get();
+			hash::findInTable<false, void>(p, capacity, hashCode, value, index, targetIndex);
 		}
 
-		hash::insertIntoTable(data.get(), capacity, std::move(value), index, targetIndex);
+		if constexpr (std::is_rvalue_reference<VALUE_REF_T>::value) {
+			hash::insertIntoTable(p, capacity, std::move(value), index, targetIndex);
+		}
+		else {
+			hash::insertIntoTable(p, capacity, VALUE_T(value), index, targetIndex);
+		}
 
 		return std::make_pair(
-			ITERATOR_T(data.get() + index, data.get() + capacity),
+			ITERATOR_T(p + index, p + capacity),
 			true
 		);
 	}
