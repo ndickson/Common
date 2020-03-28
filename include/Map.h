@@ -455,5 +455,9 @@ INLINE bool operator!=(const Map<KEY_T,VAL_T,Hasher>& a, const Map<KEY_T,VAL_T,H
 	return !(a == b);
 }
 
+// Map does not contain self-pointers, so can be realloc'd.
+template<typename KEY_T, typename VAL_T, typename Hasher>
+struct is_trivially_relocatable<Map<KEY_T,VAL_T,Hasher>> : public std::true_type {};
+
 COMMON_LIBRARY_NAMESPACE_END
 OUTER_NAMESPACE_END
