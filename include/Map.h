@@ -22,15 +22,15 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 //
 // Also unlike std::unordered_map, Hasher is required to contain the static functions:
 // uint64 hash(const KEY_T&);
-// uint64 hash(const std::pair<KEY_T,VALUE_T>&);
+// uint64 hash(const std::pair<KEY_T,VAL_T>&);
 // bool equals(const KEY_T&, const KEY_T&);
-// bool equals(const std::pair<KEY_T,VALUE_T>&, const KEY_T&);
-// bool equals(const std::pair<KEY_T,VALUE_T>&, const std::pair<KEY_T,VALUE_T>&);
+// bool equals(const std::pair<KEY_T,VAL_T>&, const KEY_T&);
+// bool equals(const std::pair<KEY_T,VAL_T>&, const std::pair<KEY_T,VAL_T>&);
 // The hash and equals functions using a std::pair must treat it as equivalent to just
 // its first component, the key.
-template<typename KEY_T, typename VALUE_T, typename Hasher = DefaultMapHasher<KEY_T,VALUE_T>>
-class Map : private Set<std::pair<KEY_T,VALUE_T>,Hasher> {
-	using MapPair = std::pair<KEY_T,VALUE_T>;
+template<typename KEY_T, typename VAL_T, typename Hasher = DefaultMapHasher<KEY_T,VAL_T>>
+class Map : private Set<std::pair<KEY_T,VAL_T>,Hasher> {
+	using MapPair = std::pair<KEY_T,VAL_T>;
 	using Base = Set<MapPair,Hasher>;
 	using TablePair = typename Base::TablePair;
 
@@ -42,14 +42,30 @@ class Map : private Set<std::pair<KEY_T,VALUE_T>,Hasher> {
 
 	using Base::increaseCapacity;
 
+	template<typename ITERATOR_VALUE_T,typename INTERNAL_T>
+	class iterator_base : public Base::template iterator_base<ITERATOR_VALUE_T,INTERNAL_T> {
+		using IteratorBase = typename Base::template iterator_base<ITERATOR_VALUE_T,INTERNAL_T>;
+
+		INLINE iterator_base(INTERNAL_T* current_, const TablePair* end_) noexcept : IteratorBase(current_, end_) {}
+
+		friend Map;
+	public:
+		using ThisType = iterator_base<ITERATOR_VALUE_T,INTERNAL_T>;
+
+		INLINE iterator_base() noexcept = default;
+		INLINE iterator_base(ThisType&& that) noexcept = default;
+		INLINE iterator_base(const ThisType&) noexcept = default;
+		INLINE ~iterator_base() noexcept = default;
+	};
+
 public:
 
-	using const_iterator = typename Base::const_iterator;
-	using iterator = typename Base::template iterator_base<std::pair<const KEY_T,VALUE_T>,TablePair>;
+	using const_iterator = iterator_base<const MapPair,const TablePair>;
+	using iterator = iterator_base<std::pair<const KEY_T,VAL_T>,TablePair>;
 
 	using key_type = KEY_T;
-	using mapped_type = VALUE_T;
-	using value_type = std::pair<const KEY_T,VALUE_T>;
+	using mapped_type = VAL_T;
+	using value_type = std::pair<const KEY_T,VAL_T>;
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
@@ -62,18 +78,19 @@ public:
 
 private:
 
-	// This default-constructs a VALUE_T if insertion occurs.
-	template<typename KEY_REF_T,typename ITERATOR_T>
-	std::pair<ITERATOR_T,bool> insertKey(KEY_REF_T key) noexcept {
+	// This default-constructs a VAL_T if insertion occurs.
+	template<typename KEY_REF_T>
+	std::pair<iterator,bool> insertKey(KEY_REF_T key) noexcept {
 		uint64 hashCode = Hasher::hash(key);
 
 		size_t index;
 		size_t targetIndex;
-		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, hashCode, key, index, targetIndex);
+		hash::Pair<MapPair>* p = data.get();
+		bool found = hash::findInTable<true, Hasher>(p, capacity, hashCode, key, index, targetIndex);
 		if (found) {
 			// It's already in the set, so value was not inserted.
 			return std::make_pair(
-				ITERATOR_T(data.get() + index, data.get() + capacity),
+				iterator(p + index, p + capacity),
 				false
 			);
 		}
@@ -83,13 +100,19 @@ private:
 		// If there's no collision, no need to increase the capacity, unless the capacity is zero.
 		if ((size_ > capacity) || ((index != targetIndex) && (size_ > (capacity>>1)))) {
 			increaseCapacity();
-			hash::findInTable<false, void>(data.get(), capacity, hashCode, key, index, targetIndex);
+			p = data.get();
+			hash::findInTable<false, void>(p, capacity, hashCode, key, index, targetIndex);
 		}
 
-		hash::insertIntoTable(data.get(), capacity, std::make_pair(std::move(key), VALUE_T()), index, targetIndex);
+		if constexpr (std::is_rvalue_reference<KEY_REF_T>::value) {
+			hash::insertIntoTable(p, capacity, std::make_pair(std::move(key), VAL_T()), index, targetIndex);
+		}
+		else {
+			hash::insertIntoTable(p, capacity, std::make_pair(KEY_T(key), VAL_T()), index, targetIndex);
+		}
 
 		return std::make_pair(
-			ITERATOR_T(data.get() + index, data.get() + capacity),
+			iterator(p + index, p + capacity),
 			true
 		);
 	}
@@ -100,14 +123,15 @@ private:
 
 		size_t index;
 		size_t targetIndex;
-		bool found = hash::findInTable<true, Hasher>(data.get(), capacity, hashCode, key, index, targetIndex);
+		hash::Pair<MapPair>* p = data.get();
+		bool found = hash::findInTable<true, Hasher>(p, capacity, hashCode, key, index, targetIndex);
 		if (found) {
 			// It's already in the set, so value was not inserted.
 			if (ALWAYS_ASSIGN) {
-				data[index].first.second = std::move(value);
+				p[index].first.second = std::move(value);
 			}
 			return std::make_pair(
-				ITERATOR_T(data.get() + index, data.get() + capacity),
+				iterator(p + index, p + capacity),
 				false
 			);
 		}
@@ -117,13 +141,29 @@ private:
 		// If there's no collision, no need to increase the capacity, unless the capacity is zero.
 		if ((size_ > capacity) || ((index != targetIndex) && (size_ > (capacity>>1)))) {
 			increaseCapacity();
-			hash::findInTable<false, void>(data.get(), capacity, hashCode, key, index, targetIndex);
+			p = data.get();
+			hash::findInTable<false, void>(p, capacity, hashCode, key, index, targetIndex);
 		}
 
-		hash::insertIntoTable(data.get(), capacity, std::make_pair(std::move(key), std::move(value)), index, targetIndex);
+		if constexpr (std::is_rvalue_reference<KEY_REF_T>::value) {
+			if constexpr (std::is_rvalue_reference<VALUE_REF_T>::value) {
+				hash::insertIntoTable(p, capacity, std::make_pair(std::move(key), std::move(value)), index, targetIndex);
+			}
+			else {
+				hash::insertIntoTable(p, capacity, std::make_pair(std::move(key), VAL_T(value)), index, targetIndex);
+			}
+		}
+		else {
+			if constexpr (std::is_rvalue_reference<VALUE_REF_T>::value) {
+				hash::insertIntoTable(p, capacity, std::make_pair(KEY_T(key), std::move(value)), index, targetIndex);
+			}
+			else {
+				hash::insertIntoTable(p, capacity, std::make_pair(KEY_T(key), VAL_T(value)), index, targetIndex);
+			}
+		}
 
 		return std::make_pair(
-			ITERATOR_T(data.get() + index, data.get() + capacity),
+			iterator(p + index, p + capacity),
 			true
 		);
 	}
@@ -206,7 +246,7 @@ public:
 	}
 
 	// This signature requires both Hasher::hash(const OTHER_T&) and
-	// Hasher::equals(const std::pair<KEY_T,VALUE_T>&,const OTHER_T&)
+	// Hasher::equals(const std::pair<KEY_T,VAL_T>&,const OTHER_T&)
 	template<typename OTHER_T>
 	[[nodiscard]] const_iterator find(const OTHER_T& key) const noexcept {
 		size_t index;
@@ -236,7 +276,7 @@ public:
 	}
 
 	// This signature requires both Hasher::hash(const OTHER_T&) and
-	// Hasher::equals(const std::pair<KEY_T,VALUE_T>&,const OTHER_T&)
+	// Hasher::equals(const std::pair<KEY_T,VAL_T>&,const OTHER_T&)
 	template<typename OTHER_T>
 	[[nodiscard]] INLINE bool contains(const OTHER_T& key) const noexcept {
 		size_t index;
@@ -250,7 +290,7 @@ public:
 	}
 
 	// This signature requires both Hasher::hash(const OTHER_T&) and
-	// Hasher::equals(const std::pair<KEY_T,VALUE_T>&,const OTHER_T&)
+	// Hasher::equals(const std::pair<KEY_T,VAL_T>&,const OTHER_T&)
 	template<typename OTHER_T>
 	[[nodiscard]] INLINE size_t count(const OTHER_T& key) const noexcept {
 		return contains(key) ? 1 : 0;
@@ -278,7 +318,7 @@ public:
 	}
 
 	// This signature requires both Hasher::hash(const OTHER_T&) and
-	// Hasher::equals(const std::pair<KEY_T,VALUE_T>&,const OTHER_T&)
+	// Hasher::equals(const std::pair<KEY_T,VAL_T>&,const OTHER_T&)
 	template<typename OTHER_T>
 	[[nodiscard]] std::pair<const_iterator,const_iterator> equal_range(const OTHER_T& key) const noexcept {
 		const_iterator it = find(key);
@@ -302,7 +342,7 @@ public:
 
 	// Unlike std::unordered_map, this will not throw an exception.
 	// Do not call it with a key that isn't present.
-	[[nodiscard]] const VALUE_T& at(const KEY_T& key) const noexcept {
+	[[nodiscard]] const VAL_T& at(const KEY_T& key) const noexcept {
 		size_t index;
 		size_t targetIndex;
 #ifndef NDEBUG
@@ -312,7 +352,7 @@ public:
 		assert(found);
 		return data[index];
 	}
-	[[nodiscard]] VALUE_T& at(const KEY_T& key) noexcept {
+	[[nodiscard]] VAL_T& at(const KEY_T& key) noexcept {
 		size_t index;
 		size_t targetIndex;
 #ifndef NDEBUG
@@ -322,20 +362,20 @@ public:
 		assert(found);
 		return data[index];
 	}
-	[[nodiscard]] INLINE VALUE_T& operator[](const KEY_T& key) noexcept {
-		auto pair = insertKey<const KEY_T&, iterator>(key);
+	[[nodiscard]] INLINE VAL_T& operator[](const KEY_T& key) noexcept {
+		auto pair = insertKey<const KEY_T&>(key);
 		return pair.first->second;
 	}
-	[[nodiscard]] INLINE VALUE_T& operator[](KEY_T&& key) noexcept {
-		auto pair = insertKey<KEY_T&&, iterator>(std::move(key));
+	[[nodiscard]] INLINE VAL_T& operator[](KEY_T&& key) noexcept {
+		auto pair = insertKey<KEY_T&&>(std::move(key));
 		return pair.first->second;
 	}
 
-	INLINE std::pair<iterator,bool> insert(const KEY_T& key, const VALUE_T& value) noexcept {
-		return insertKeyValue<const KEY_T&, const VALUE_T&, false>(key, value);
+	INLINE std::pair<iterator,bool> insert(const KEY_T& key, const VAL_T& value) noexcept {
+		return insertKeyValue<const KEY_T&, const VAL_T&, false>(key, value);
 	}
-	INLINE std::pair<iterator,bool> insert(KEY_T&& key, VALUE_T&& value) noexcept {
-		return insertKeyValue<KEY_T&&, VALUE_T&&, false>(std::move(key), std::move(value));
+	INLINE std::pair<iterator,bool> insert(KEY_T&& key, VAL_T&& value) noexcept {
+		return insertKeyValue<KEY_T&&, VAL_T&&, false>(std::move(key), std::move(value));
 	}
 	INLINE std::pair<iterator,bool> insert(const MapPair& pair) noexcept {
 		return Base::template insertCommon<const MapPair&, iterator>(pair);
@@ -354,11 +394,11 @@ public:
 			insert(*it);
 		}
 	}
-	INLINE std::pair<iterator,bool> insert_or_assign(const KEY_T& key, VALUE_T&& value) noexcept {
-		return insertKeyValue<const KEY_T&, VALUE_T&&, true>(key, std::move(value));
+	INLINE std::pair<iterator,bool> insert_or_assign(const KEY_T& key, VAL_T&& value) noexcept {
+		return insertKeyValue<const KEY_T&, VAL_T&&, true>(key, std::move(value));
 	}
-	INLINE std::pair<iterator,bool> insert_or_assign(KEY_T&& key, VALUE_T&& value) noexcept {
-		return insertKeyValue<KEY_T&&, VALUE_T&&, true>(std::move(key), std::move(value));
+	INLINE std::pair<iterator,bool> insert_or_assign(KEY_T&& key, VAL_T&& value) noexcept {
+		return insertKeyValue<KEY_T&&, VAL_T&&, true>(std::move(key), std::move(value));
 	}
 
 	INLINE iterator erase(const const_iterator& it) noexcept {
@@ -390,8 +430,8 @@ public:
 	using Base::reserve;
 };
 
-template<typename KEY_T, typename VALUE_T, typename Hasher>
-bool operator==(const Map<KEY_T,VALUE_T,Hasher>& a, const Map<KEY_T,VALUE_T,Hasher>& b) {
+template<typename KEY_T, typename VAL_T, typename Hasher>
+bool operator==(const Map<KEY_T,VAL_T,Hasher>& a, const Map<KEY_T,VAL_T,Hasher>& b) {
 	if (&a == &b) {
 		return true;
 	}
@@ -410,8 +450,8 @@ bool operator==(const Map<KEY_T,VALUE_T,Hasher>& a, const Map<KEY_T,VALUE_T,Hash
 	return true;
 }
 
-template<typename KEY_T, typename VALUE_T, typename Hasher>
-INLINE bool operator!=(const Map<KEY_T,VALUE_T,Hasher>& a, const Map<KEY_T,VALUE_T,Hasher>& b) {
+template<typename KEY_T, typename VAL_T, typename Hasher>
+INLINE bool operator!=(const Map<KEY_T,VAL_T,Hasher>& a, const Map<KEY_T,VAL_T,Hasher>& b) {
 	return !(a == b);
 }
 
