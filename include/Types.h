@@ -166,14 +166,20 @@ struct DefaultMapHasher : public DefaultHasher<KEY_T> {
 	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const std::pair<KEY_T,VALUE_T>& b) {
 		return DefaultHasher<KEY_T>::equals(a.first, b.first);
 	}
-	static INLINE bool equals(const KEY_T& a, const std::pair<KEY_T,VALUE_T>& b) {
+	template<typename OTHER_T>
+	static INLINE bool equals(const OTHER_T& a, const std::pair<KEY_T,VALUE_T>& b) {
 		return DefaultHasher<KEY_T>::equals(a, b.first);
 	}
-	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const KEY_T& b) {
+	template<typename OTHER_T>
+	static INLINE bool equals(const std::pair<KEY_T,VALUE_T>& a, const OTHER_T& b) {
 		return DefaultHasher<KEY_T>::equals(a.first, b);
 	}
 	static INLINE uint64 hash(const std::pair<KEY_T,VALUE_T>& a) {
 		return DefaultHasher<KEY_T>::hash(a.first);
+	}
+	template<typename OTHER_T>
+	static INLINE uint64 hash(const OTHER_T& a) {
+		return DefaultHasher<OTHER_T>::hash(a);
 	}
 };
 
