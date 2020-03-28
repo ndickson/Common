@@ -178,7 +178,7 @@ protected:
 		if (found) {
 			// It's already in the set, so value was not inserted.
 			return std::make_pair(
-				ITERATOR_T(p + index, data.get() + capacity),
+				ITERATOR_T(p + index, p + capacity),
 				false
 			);
 		}
