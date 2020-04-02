@@ -394,7 +394,12 @@ protected:
 			subTable->capacity = newCapacity;
 		}
 
-		hash::insertIntoTable(data, capacity, std::move(value), index, targetIndex);
+		if constexpr (std::is_rvalue_reference<VALUE_REF_T>::value) {
+			hash::insertIntoTable(data, capacity, std::move(value), index, targetIndex);
+		}
+		else {
+			hash::insertIntoTable(data, capacity, VALUE_T(value), index, targetIndex);
+		}
 
 		if (accessor == nullptr) {
 			subTable->stopWriting();
