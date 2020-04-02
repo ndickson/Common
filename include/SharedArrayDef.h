@@ -16,7 +16,7 @@ INLINE void SharedArray<T,EXTRA_T>::SharedArrayHeader::incRef() {
 }
 
 template<typename T, typename EXTRA_T>
-inline void SharedArray<T,EXTRA_T>::SharedArrayHeader::decRef() {
+inline size_t SharedArray<T,EXTRA_T>::SharedArrayHeader::decRef() {
 	assert(refCount.load(std::memory_order_relaxed) != 0);
 	// If the current reference count is 1, an atomic decrement
 	// isn't necessary, since this is the only reference.
@@ -25,7 +25,7 @@ inline void SharedArray<T,EXTRA_T>::SharedArrayHeader::decRef() {
 		// Do an atomic decrement.
 		size_t newCount = --refCount;
 		if (newCount != 0) {
-			return;
+			return newCount;
 		}
 	}
 
@@ -47,6 +47,8 @@ inline void SharedArray<T,EXTRA_T>::SharedArrayHeader::decRef() {
 
 	// Free the memory.
 	free(this);
+
+	return 0;
 }
 
 template<typename T, typename EXTRA_T>
