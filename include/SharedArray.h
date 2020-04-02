@@ -28,7 +28,7 @@ protected:
 		using SharedArrayHeaderBase::refCount;
 		using SharedArrayHeaderBase::size;
 		INLINE void incRef();
-		inline void decRef();
+		inline size_t decRef();
 	};
 
 	SharedArrayHeader* data_;
