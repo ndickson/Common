@@ -507,6 +507,10 @@ public:
 	INLINE bool insert(VALUE_T&& value) {
 		return insertCommon<VALUE_T&&>(static_cast<const_accessor*>(nullptr), std::move(value));
 	}
+	template<typename OTHER_T>
+	INLINE bool insert(const OTHER_T& value) {
+		return insertCommon<const OTHER_T&>(static_cast<const_accessor*>(nullptr), value);
+	}
 
 	// Insert the value into the set and acquire a const_accessor to it.
 	// If the insertion succeeded, this returns true.
@@ -518,6 +522,10 @@ public:
 	INLINE bool insert(const_accessor& accessor, VALUE_T&& value) {
 		return insertCommon<VALUE_T&&>(&accessor, value);
 	}
+	template<typename OTHER_T>
+	INLINE bool insert(const_accessor& accessor, const OTHER_T& value) {
+		return insertCommon<const OTHER_T&>(&accessor, value);
+	}
 
 	// Insert the value into the set and acquire an accessor to it.
 	// If the insertion succeeded, this returns true.
@@ -528,6 +536,10 @@ public:
 	}
 	INLINE bool insert(accessor& accessor, VALUE_T&& value) {
 		return insertCommon<VALUE_T&&>(&accessor, std::move(value));
+	}
+	template<typename OTHER_T>
+	INLINE bool insert(accessor& accessor, const OTHER_T& value) {
+		return insertCommon<const OTHER_T&>(&accessor, value);
 	}
 
 	// Remove the item referenced by the accessor from the set.
