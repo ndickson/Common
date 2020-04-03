@@ -158,6 +158,8 @@ INLINE SharedString operator "" _str(const char* text, size_t size) noexcept {
 // This means that equality comparisons can be done with pointer comparison,
 // and also that frequently recurring strings can be stored a single time in memory.
 class UniqueString : public SharedString {
+protected:
+	using SharedString::data_;
 public:
 	constexpr INLINE UniqueString() noexcept : SharedString() {}
 
@@ -170,15 +172,16 @@ public:
 	// even though this array type is reference counted.
 	explicit INLINE UniqueString(const UniqueString& that) noexcept : SharedString(that) {}
 
-	explicit UniqueString(const SharedString& that) noexcept;
-	explicit UniqueString(const ShallowString& that) noexcept;
+	COMMON_LIBRARY_EXPORTED explicit UniqueString(const SharedString& that) noexcept;
+	COMMON_LIBRARY_EXPORTED explicit UniqueString(SharedString&& that) noexcept;
+	COMMON_LIBRARY_EXPORTED explicit UniqueString(const ShallowString& that) noexcept;
 	explicit INLINE UniqueString(const char* that) noexcept : UniqueString(ShallowString(that)) {}
 	INLINE UniqueString(const char* that, const size_t size) noexcept : UniqueString(ShallowString(that, size)) {}
 	INLINE UniqueString(const char* that, const size_t size, const uint64 hash) noexcept : UniqueString(ShallowString(that, size, hash)) {}
 
 	// If the reference count would reach 1 after decrementing it, (i.e. is 2 at the time of this destructor),
 	// this removes the string from the unique string table and frees the string.
-	~UniqueString() noexcept;
+	COMMON_LIBRARY_EXPORTED ~UniqueString() noexcept;
 
 	INLINE UniqueString& operator=(UniqueString&& that) noexcept {
 		SharedString::operator=(std::move(that));
