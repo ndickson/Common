@@ -227,6 +227,13 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 
 			if (type == ItemType::PROCESSING_INSTRUCTION && text != end && *text == '?') {
 				++text;
+				// Skip until '>'
+				while (text != end && *text != 0 && *text != '>') {
+					++text;
+				}
+			}
+			if (text != end && *text == '>') {
+				++text;
 			}
 
 			currentContent->append(std::move(item));
