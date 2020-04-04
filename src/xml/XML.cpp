@@ -366,6 +366,22 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 						++text;
 					}
 				}
+				else if (text != end) {
+					assert(*text == '>');
+					++text;
+				}
+
+				item->block = false;
+				if (text != end && (*text == '\r' || *text == '\n')) {
+					// If the content starts with a carriage return or line feed,
+					// mark the element as block and skip the new line.
+					item->block = true;
+					bool isCR = (*text == '\r');
+					++text;
+					if (text != end && isCR && (*text == '\n')) {
+						++text;
+					}
+				}
 
 				if (!selfClosing) {
 					elementStack.append(item.get());
