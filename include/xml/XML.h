@@ -67,8 +67,6 @@ enum class ItemType
 struct Item {
 	ItemType type;
 	BufArray<SharedString,3> text;
-	bool selfClosing;
-	bool block;
 
 	INLINE ~Item() {
 		clear();
@@ -81,6 +79,8 @@ using Content = Array<std::unique_ptr<Item>>;
 
 struct Element : public Item {
 	Content content;
+	bool selfClosing = false;
+	bool block = false;
 
 	inline void clear() {
 		// This is used for destruction, so content must have any allocation freed.
@@ -98,13 +98,13 @@ inline void Item::clear() {
 	}
 }
 
+COMMON_LIBRARY_EXPORTED bool parseTextXML(const char* begin, const char* end, Content& output);
+
 COMMON_LIBRARY_EXPORTED bool ReadXMLFile(const char* filename, Content& content);
 
-COMMON_LIBRARY_EXPORTED bool WriteXMLFile(const char* filename, const Content& content, bool binary = false);
+COMMON_LIBRARY_EXPORTED void generateTextXML(const Content& content, Array<char>& output, size_t firstLineTabs, size_t nestingLevel);
 
-COMMON_LIBRARY_EXPORTED const char* parseTextXML(const char* begin, const char* end, Content& output);
-COMMON_LIBRARY_EXPORTED void generateTextXML(const Content& value, Array<char>& output, size_t firstLineTabs, size_t nestingLevel);
-
+COMMON_LIBRARY_EXPORTED bool WriteXMLFile(const char* filename, const Content& content);
 
 } // namespace xml
 OUTER_NAMESPACE_END
