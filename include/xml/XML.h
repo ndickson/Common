@@ -99,6 +99,14 @@ inline void Item::clear() {
 	}
 }
 
+// This escapes:
+//  <   &lt;
+//  >   &gt;
+//  &   &amp;
+//  '   &apos; (if escapeQuotes true)
+//  "   &quot; (if escapeQuotes true)
+COMMON_LIBRARY_EXPORTED void escapeXMLText(const char* inBegin, const char*const inEnd, Array<char>& outText, bool escapeQuotes);
+
 COMMON_LIBRARY_EXPORTED bool parseTextXML(const char* begin, const char* end, Content& output, bool trimLeadingSpace = true);
 
 COMMON_LIBRARY_EXPORTED bool ReadXMLFile(const char* filename, Content& content, bool trimLeadingSpace = true);
