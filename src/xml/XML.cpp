@@ -111,8 +111,28 @@ static size_t tryParseEntityName(const char* begin, const char* end) {
 	return 0;
 }
 
+static bool handleNewLine(const char*& text, const char*const end) {
+	if (text == end || (*text != '\r' && *text != '\n')) {
+		// Not a new line.
+		return false;
+	}
 
-bool parseTextXML(const char* begin, const char* end, Content& output) {
+	// Skip the LF, CR, or CRLF.
+	bool isCR = (*text == '\r');
+	++text;
+	if (text != end && isCR && (*text == '\n')) {
+		++text;
+	}
+
+	// Skip leading whitespace on the new line.
+	while (text != end && *text != 0 && *text <= ' ') {
+		++text;
+	}
+
+	return true;
+}
+
+bool parseTextXML(const char* begin, const char* end, Content& output, bool trimLeadingSpace) {
 	const char* text = begin;
 	const char* currentTextStart = text;
 	Content* currentContent = &output;
@@ -120,7 +140,18 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 	while (text != end && *text != 0) {
 		char c = *text;
 		if (c != '<' && c != '&') {
-			++text;
+			if (trimLeadingSpace && (c == '\r' || c == '\n')) {
+				// Insert completed text block, regardless of whether it's empty,
+				// to handle the new line.
+				std::unique_ptr<Item> item(new Item());
+				item->type = ItemType::TEXT;
+				item->text.append(SharedString(currentTextStart, text-currentTextStart));
+				item->newLineAfter = handleNewLine(text, end);
+				currentContent->append(std::move(item));
+			}
+			else {
+				++text;
+			}
 			continue;
 		}
 
@@ -142,13 +173,18 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 
 			std::unique_ptr<Item> item(new Item());
 			item->type = ItemType::ENTITY;
-			item->text.append(SharedString(text, nameLength));
-			currentContent->append(std::move(item));
-
+			const char* entityBegin = text;
 			text += nameLength;
+			item->text.append(SharedString(entityBegin, nameLength));
 
 			assert(*text == ';');
 			++text;
+
+			if (trimLeadingSpace) {
+				item->newLineAfter = handleNewLine(text, end);
+			}
+
+			currentContent->append(std::move(item));
 			currentTextStart = text;
 
 			continue;
@@ -189,6 +225,11 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 					std::unique_ptr<Item> item(new Item());
 					item->type = type;
 					item->text.append(SharedString(commentStart, text-commentStart-3));
+
+					if (trimLeadingSpace) {
+						item->newLineAfter = handleNewLine(text, end);
+					}
+
 					currentContent->append(std::move(item));
 					finishedComment = true;
 					break;
@@ -236,6 +277,10 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 				++text;
 			}
 
+			if (trimLeadingSpace) {
+				item->newLineAfter = handleNewLine(text, end);
+			}
+
 			currentContent->append(std::move(item));
 		}
 		else { // if (type == ItemType::ELEMENT)
@@ -266,8 +311,11 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 					// There's no matching start tag, so treat this as a self-closing element tag
 					// with no attributes, instead.
 
-					std::unique_ptr<Element> item(new Element());
+					std::unique_ptr<Item> item(new Element());
 					item->text.append(SharedString(name));
+					if (trimLeadingSpace) {
+						item->newLineAfter = handleNewLine(text, end);
+					}
 					currentContent->append(std::move(item));
 				}
 				else {
@@ -287,12 +335,20 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 							// Clear source's content and mark it as self-closing.
 							source.content.setCapacity(0);
 							source.selfClosing = true;
+							source.newLineAfter = source.newLineInside;
+							source.newLineInside = false;
 						}
 
+						if (trimLeadingSpace) {
+							elementStack[iPlusOne-1]->newLineAfter = handleNewLine(text, end);
+						}
 						elementStack.setSize(iPlusOne-1);
 					}
 					else {
 						// The element at iPlusOne-1 can be closed as is.
+						if (trimLeadingSpace) {
+							elementStack.last()->newLineAfter = handleNewLine(text, end);
+						}
 						elementStack.removeLast();
 					}
 
@@ -378,15 +434,13 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 					++text;
 				}
 
-				item->block = false;
-				if (text != end && (*text == '\r' || *text == '\n')) {
-					// If the content starts with a carriage return or line feed,
-					// mark the element as block and skip the new line.
-					item->block = true;
-					bool isCR = (*text == '\r');
-					++text;
-					if (text != end && isCR && (*text == '\n')) {
-						++text;
+				if (trimLeadingSpace) {
+					bool hadNewLine = handleNewLine(text, end);
+					if (selfClosing) {
+						item->newLineAfter = hadNewLine;
+					}
+					else {
+						item->newLineInside = hadNewLine;
 					}
 				}
 
@@ -430,7 +484,7 @@ bool parseTextXML(const char* begin, const char* end, Content& output) {
 	return true;
 }
 
-bool ReadXMLFile(const char* filename, Content& content) {
+bool ReadXMLFile(const char* filename, Content& content, bool trimLeadingSpace) {
 	Array<char> contents;
 	bool success = ReadWholeFile(filename, contents);
 	if (!success || contents.size() == 0) {
@@ -440,12 +494,195 @@ bool ReadXMLFile(const char* filename, Content& content) {
 	size_t size = contents.size();
 	const char* data = contents.data();
 	const char* end = data+size;
-	success = parseTextXML(data, end, content);
+	success = parseTextXML(data, end, content, trimLeadingSpace);
 	return success;
 }
 
-void generateTextXML(const Content& content,Array<char>& output,size_t firstLineTabs,size_t nestingLevel) {
-	// FIXME: Implement this!!!
+void generateTextXML(const Content& content, Array<char>& output, size_t firstLineTabs, size_t nestingLevel) {
+	size_t numTabs = firstLineTabs;
+	for (size_t contenti = 0, contentSize = content.size(); contenti != contentSize; ++contenti) {
+		if (numTabs != 0) {
+			size_t tabBegin = output.size();
+			output.setSize(tabBegin + numTabs);
+			for (size_t i = 0; i != numTabs; ++i) {
+				output[tabBegin+i] = '\t';
+			}
+			numTabs = 0;
+		}
+
+		const char* beforeText = nullptr;
+		size_t beforeTextSize = 0;
+		const char* afterText = nullptr;
+		size_t afterTextSize = 0;
+		const char*const beforeAfterTexts[][2] = {
+			{"<!--", "-->"},
+			{"<![CDATA[", "]]>"},
+			{"&", ";"}
+		};
+		const size_t beforeAfterTextSizes[][2] = {
+			{4, 3},
+			{9, 3},
+			{1, 1}
+		};
+
+		bool isSingleCase = true;
+		size_t textBeginIndex = output.size();
+		const Item& item = *content[contenti];
+		const char* text = item.text[0].data();
+		switch (item.type) {
+			case ItemType::TEXT: {
+				// TODO: Escape text if needed!
+				break;
+			}
+			case ItemType::COMMENT: {
+				beforeText = beforeAfterTexts[0][0];
+				beforeTextSize = beforeAfterTextSizes[0][0];
+				afterText = beforeAfterTexts[0][1];
+				afterTextSize = beforeAfterTextSizes[0][1];
+				break;
+			}
+			case ItemType::CDATA: {
+				beforeText = beforeAfterTexts[1][0];
+				beforeTextSize = beforeAfterTextSizes[1][0];
+				afterText = beforeAfterTexts[1][1];
+				afterTextSize = beforeAfterTextSizes[1][1];
+				break;
+			}
+			case ItemType::ENTITY: {
+				beforeText = beforeAfterTexts[2][0];
+				beforeTextSize = beforeAfterTextSizes[2][0];
+				afterText = beforeAfterTexts[2][1];
+				afterTextSize = beforeAfterTextSizes[2][1];
+				break;
+			}
+			case ItemType::ELEMENT:
+			case ItemType::PROCESSING_INSTRUCTION:
+			case ItemType::DECLARATION: {
+				isSingleCase = false;
+				// Add start tag.
+				output.append('<');
+				if (item.type != ItemType::ELEMENT) {
+					char c = (item.type == ItemType::DECLARATION) ? '!' : '?';
+					output.append(c);
+				}
+
+				size_t textSize = item.text[0].size();
+				textBeginIndex = output.size();
+				output.setSize(textBeginIndex + textSize);
+				char* textBegin = &(output[textBeginIndex]);
+				for (size_t i = 0; i != textSize; ++i) {
+					textBegin[i] = text[i];
+				}
+
+				// Add attributes to start tag.
+				for (size_t i = 0, numTexts = item.text.size()-1; i != numTexts; ++i) {
+					const SharedString& string = item.text[i+1];
+					bool odd = (i & 1) != 0;
+					if (!odd) {
+						output.append(' ');
+					}
+					else {
+						output.append('=');
+						output.append('\"');
+					}
+
+					size_t textSize = string.size();
+					if (textSize != 0) {
+						textBeginIndex = output.size();
+						output.setSize(textBeginIndex + textSize);
+						const char* attributeText = string.data();
+						char* textBegin = &(output[textBeginIndex]);
+						for (size_t i = 0; i != textSize; ++i) {
+							textBegin[i] = attributeText[i];
+						}
+					}
+
+					if (odd) {
+						output.append('\"');
+					}
+				}
+
+				const Element* element = (item.type == ItemType::ELEMENT) ? static_cast<const Element*>(&item) : nullptr;
+
+				// Complete the start tag.
+				if (element != nullptr && element->selfClosing) {
+					output.append('/');
+				}
+				else if (item.type == ItemType::PROCESSING_INSTRUCTION) {
+					output.append('?');
+				}
+				output.append('>');
+
+				if (element != nullptr && !element->selfClosing) {
+					if (element->newLineInside) {
+						numTabs = nestingLevel + (element->content.size() != 0);
+						output.append('\n');
+					}
+
+					if (element->content.size() != 0) {
+						generateTextXML(element->content, output, numTabs, nestingLevel+1);
+						if (element->content.last()->newLineAfter) {
+							numTabs = nestingLevel;
+						}
+						else {
+							numTabs = 0;
+						}
+					}
+
+					// Add end tag indent.
+					if (numTabs != 0) {
+						size_t tabBegin = output.size();
+						output.setSize(tabBegin + numTabs);
+						for (size_t i = 0; i != numTabs; ++i) {
+							output[tabBegin+i] = '\t';
+						}
+						numTabs = 0;
+					}
+
+					// Add end tag.
+					textBeginIndex = output.size();
+					output.setSize(textBeginIndex + textSize + 3);
+					char* textBegin = &(output[textBeginIndex]);
+					textBegin[0] = '<';
+					textBegin[1] = '/';
+					textBegin += 2;
+					for (size_t i = 0; i != textSize; ++i) {
+						textBegin[i] = text[i];
+					}
+					textBegin += textSize;
+					textBegin[0] = '>';
+				}
+				break;
+			}
+		}
+
+		if (isSingleCase) {
+			size_t textSize = item.text[0].size();
+			output.setSize(textBeginIndex + beforeTextSize + textSize + afterTextSize);
+			char* textBegin = &(output[textBeginIndex]);
+			if (beforeTextSize != 0) {
+				for (size_t i = 0; i != beforeTextSize; ++i) {
+					textBegin[i] = beforeText[i];
+				}
+				textBegin += beforeTextSize;
+			}
+			for (size_t i = 0; i != textSize; ++i) {
+				textBegin[i] = text[i];
+			}
+			textBegin += textSize;
+			if (afterTextSize != 0) {
+				for (size_t i = 0; i != afterTextSize; ++i) {
+					textBegin[i] = afterText[i];
+				}
+				textBegin += afterTextSize;
+			}
+		}
+
+		if (item.newLineAfter) {
+			numTabs = nestingLevel;
+			output.append('\n');
+		}
+	}
 }
 
 bool WriteXMLFile(const char* filename, const Content& content) {
