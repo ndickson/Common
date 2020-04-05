@@ -10,6 +10,56 @@
 OUTER_NAMESPACE_BEGIN
 namespace xml {
 
+void escapeXMLText(const char* inBegin, const char* const inEnd, Array<char>& outText, bool escapeQuotes) {
+	const char*const lt = "&lt;";
+	const char*const gt = "&gt;";
+	const char*const amp = "&amp;";
+	const char*const apos = "&apos;";
+	const char*const quot = "&quot;";
+
+	for (const char* text = inBegin; text != inEnd && *text != 0; ++text) {
+		const char c = *text;
+		const char* escapeString = nullptr;
+		size_t escapeSize;
+		if (c == '<') {
+			escapeString = lt;
+			escapeSize = 4;
+		}
+		else if (c == '>') {
+			escapeString = gt;
+			escapeSize = 4;
+		}
+		else if (c == '&') {
+			escapeString = amp;
+			escapeSize = 5;
+		}
+		else if (escapeQuotes) {
+			if (c == '\'') {
+				escapeString = apos;
+				escapeSize = 6;
+			}
+			else if (c == '\"') {
+				escapeString = quot;
+				escapeSize = 6;
+			}
+		}
+
+		if (escapeString == nullptr) {
+			// Not escaped, so just the one character.
+			outText.append(c);
+			continue;
+		}
+
+		// Copy the escape string into outText.
+		size_t textBeginIndex = outText.size();
+		outText.setSize(textBeginIndex + escapeSize);
+		char* textBegin = &(outText[textBeginIndex]);
+		for (size_t i = 0; i != escapeSize; ++i) {
+			textBegin[i] = escapeString[i];
+		}
+	}
+}
+
 // begin should be pointing to just after a '<' character.
 // If begin points to a valid tag name, this returns the number of bytes in that tag name,
 // and fills in the type.
