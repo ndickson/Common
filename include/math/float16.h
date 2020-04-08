@@ -6,6 +6,8 @@
 #include "../Types.h"
 #include "../Bits.h"
 
+#include <limits>
+
 OUTER_NAMESPACE_BEGIN
 namespace math {
 
@@ -46,6 +48,9 @@ struct float16 {
 	constexpr static DoubleIntType DOUBLE_EXP_MASK_SHIFT = DoubleIntType((DoubleIntType(1)<<DOUBLE_EXP_BITS)-1);
 	constexpr static DoubleIntType DOUBLE_EXP_MASK = DOUBLE_EXP_MASK_SHIFT<<DOUBLE_MANTISSA_BITS;
 
+	struct InitUsingBits {};
+
+	constexpr INLINE float16(uint16 bits_, InitUsingBits) noexcept : bits(bits_) {}
 
 	explicit float16(float f) noexcept {
 		static_assert(sizeof(float) == sizeof(FloatIntType));
@@ -59,7 +64,19 @@ struct float16 {
 		if (exponent >= 16) {
 			// Infinity or NaN
 			bool isNaN = (exponent == 0x80 && mantissa != 0);
-			bits |= EXP_MASK + IntType(isNaN);
+			if (!isNaN) {
+				bits |= EXP_MASK;
+			}
+			else {
+				// This shifting preserves the high mantissa bit for distinguishing
+				// between quiet NaN and signaling NaN.
+				mantissa >>= (FLOAT_MANTISSA_BITS-MANTISSA_BITS);
+				if (mantissa == 0) {
+					// The shifting shifted out the non-zero bits, so make one non-zero.
+					mantissa = 1;
+				}
+				bits |= EXP_MASK + IntType(mantissa);
+			}
 			return;
 		}
 		if (exponent >= -14) {
@@ -121,7 +138,7 @@ struct float16 {
 		}
 		else {
 			// Infinity or NaN
-			fbits |= FLOAT_EXP_MASK | mantissa;
+			fbits |= FLOAT_EXP_MASK | (FloatIntType(mantissa)<<(FLOAT_MANTISSA_BITS-MANTISSA_BITS));;
 		}
 
 		static_assert(sizeof(float) == sizeof(FloatIntType));
@@ -140,7 +157,19 @@ struct float16 {
 		if (exponent >= 16) {
 			// Infinity or NaN
 			bool isNaN = (exponent == 0x400 && mantissa != 0);
-			bits |= EXP_MASK + IntType(isNaN);
+			if (!isNaN) {
+				bits |= EXP_MASK;
+			}
+			else {
+				// This shifting preserves the high mantissa bit for distinguishing
+				// between quiet NaN and signaling NaN.
+				mantissa >>= (DOUBLE_MANTISSA_BITS-MANTISSA_BITS);
+				if (mantissa == 0) {
+					// The shifting shifted out the non-zero bits, so make one non-zero.
+					mantissa = 1;
+				}
+				bits |= EXP_MASK + IntType(mantissa);
+			}
 			return;
 		}
 		if (exponent >= -14) {
@@ -202,13 +231,97 @@ struct float16 {
 		}
 		else {
 			// Infinity or NaN
-			fbits |= DOUBLE_EXP_MASK | mantissa;
+			fbits |= DOUBLE_EXP_MASK | (DoubleIntType(mantissa)<<(DOUBLE_MANTISSA_BITS-MANTISSA_BITS));
 		}
 
 		static_assert(sizeof(double) == sizeof(DoubleIntType));
 		return *reinterpret_cast<const double*>(&fbits);
 	}
+
+	[[nodiscard]] constexpr float16 operator-() const noexcept {
+		return float16(bits & 0x8000, InitUsingBits());
+	}
+	[[nodiscard]] constexpr float16 operator+() const noexcept {
+		return *this;
+	}
 };
 
 } // namespace math
 OUTER_NAMESPACE_END
+
+namespace std {
+	template<>
+	class numeric_limits<OUTER_NAMESPACE::math::float16> {
+		using float16 = OUTER_NAMESPACE::math::float16;
+
+		constexpr static bool is_specialized = true;
+
+		constexpr static std::float_denorm_style has_denorm = std::denorm_present;
+		constexpr static bool has_denorm_loss = false;
+		constexpr static bool has_infinity = true;
+		constexpr static bool has_quiet_NaN = true;
+		constexpr static bool has_signaling_NaN = true;
+		constexpr static bool is_bounded = true;
+		constexpr static bool is_exact = false;
+		constexpr static bool is_iec559 = true;
+		constexpr static bool is_integer = false;
+		constexpr static bool is_modulo = false;
+		constexpr static bool is_signed = true;
+		constexpr static std::float_round_style round_style = std::round_to_nearest;
+		constexpr static bool tinyness_before = false;
+		constexpr static bool traps = false;
+
+		constexpr static int digits = 11;
+		constexpr static int digits10 = 3;
+		constexpr static int max_digits10 = 5;
+		constexpr static int radix = 2;
+
+		// The standard requires that this be *1 higher* than the
+		// minimum exponent that produces a normal number, i.e. -14.
+		constexpr static int min_exponent = -13;
+
+		constexpr static int min_exponent10 = -4;
+
+		// The standard requires that this be *1 higher* than the
+		// maximum exponent that produces a normal number, i.e. 15.
+		constexpr static int max_exponent = 16;
+
+		constexpr static int max_exponent10 = 4;
+
+		constexpr static float16 min() noexcept {
+			// Exponent -14 and mantissa all zeros
+			return float16(0x0400, float16::InitUsingBits());
+		}
+		constexpr static float16 max() noexcept {
+			// Exponent 15 and mantissa all ones
+			return float16(0x7BFF, float16::InitUsingBits());
+		}
+		constexpr static float16 lowest() noexcept {
+			return -max();
+		}
+		constexpr static float16 epsilon() noexcept {
+			// Exponent -10 and mantissa all zeros
+			return float16(0x1400, float16::InitUsingBits());
+		}
+		constexpr static float16 round_error() noexcept {
+			// Exponent -1 and mantissa all zeros
+			return float16(0x4000, float16::InitUsingBits());
+		}
+		constexpr static float16 infinity() noexcept {
+			// Exponent 16 and mantissa all zeros
+			return float16(0x7C00, float16::InitUsingBits());
+		}
+		constexpr static float16 quiet_NaN() noexcept {
+			// Exponent 16 and mantissa all zeros except highest bit
+			return float16(0x7E00, float16::InitUsingBits());
+		}
+		constexpr static float16 signaling_NaN() noexcept {
+			// Exponent 16 and mantissa all zeros except 2nd-highest bit
+			return float16(0x7D00, float16::InitUsingBits());
+		}
+		constexpr static float16 denorm_min() noexcept {
+			// Exponent -15 and mantissa all zeros except lowest bit
+			return float16(0x0001, float16::InitUsingBits());
+		}
+	};
+}
