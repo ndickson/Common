@@ -87,7 +87,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 	return count;
 }
 
-[[nodiscard]] constexpr inline uint32 bitScanF32(uint16 v) {
+[[nodiscard]] constexpr inline uint32 bitScanF16(uint16 v) {
 	// NOTE: This doesn't use _BitScanForward (Visual Studio) or __builtin_ctz (GCC/Clang)
 	//       because _BitScanForward can't be called from constexpr code.
 	if (v == 0) {
@@ -106,7 +106,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 	return count;
 }
 
-[[nodiscard]] constexpr inline uint32 bitScanF32(uint8 v) {
+[[nodiscard]] constexpr inline uint32 bitScanF8(uint8 v) {
 	// NOTE: This doesn't use _BitScanForward (Visual Studio) or __builtin_ctz (GCC/Clang)
 	//       because _BitScanForward can't be called from constexpr code.
 	if (v == 0) {
@@ -169,7 +169,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 	return count;
 }
 
-[[nodiscard]] constexpr inline uint32 bitScanR32(uint16 v) {
+[[nodiscard]] constexpr inline uint32 bitScanR16(uint16 v) {
 	// NOTE: This doesn't use _BitScanReverse (Visual Studio) or __builtin_clz (GCC/Clang)
 	//       because _BitScanReverse can't be called from constexpr code.
 	if (v == 0) {
@@ -188,7 +188,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 	return count;
 }
 
-[[nodiscard]] constexpr inline uint32 bitScanR32(uint8 v) {
+[[nodiscard]] constexpr inline uint32 bitScanR8(uint8 v) {
 	// NOTE: This doesn't use _BitScanReverse (Visual Studio) or __builtin_clz (GCC/Clang)
 	//       because _BitScanReverse can't be called from constexpr code.
 	if (v == 0) {
