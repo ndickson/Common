@@ -228,13 +228,13 @@ void Array<T>::setCapacity(const size_t newCapacity) {
 	}
 	else {
 		if (is_trivially_relocatable<T>::value || size_ == 0) {
-			data_.realloc(newCapacity);
+			data_.realloc(newCapacity, size_);
 		}
 		else {
 			// realloc doesn't work for types T that contain pointers to within themselves,
 			// so we must allocate a new buffer and move-assign the data.
 			T* oldData = data_.release();
-			data_.realloc(newCapacity);
+			data_.realloc(newCapacity, 0);
 			// release() should have made realloc() allocate a new buffer.
 			assert(begin() != oldData);
 			moveConstructSpan(begin(), end(), oldData);
@@ -261,13 +261,13 @@ void Array<T>::increaseCapacity(const size_t newCapacity) {
 	}
 	else {
 		if (is_trivially_relocatable<T>::value || size_ == 0) {
-			data_.realloc(newCapacity);
+			data_.realloc(newCapacity, size_);
 		}
 		else {
 			// realloc doesn't work for types T that contain pointers to within themselves,
 			// so we must allocate a new buffer and move-assign the data.
 			T* oldData = data_.release();
-			data_.realloc(newCapacity);
+			data_.realloc(newCapacity, 0);
 			// release() should have made realloc() allocate a new buffer.
 			assert(begin() != oldData);
 			moveConstructSpan(begin(), end(), oldData);
@@ -363,7 +363,7 @@ void Array<T>::reallocLocalBuffer(size_t newCapacity, bool freeOldBlock) {
 	// a different address.
 	// Any elements to be destructed must already have been destructed.
 	T* oldData = data_.release();
-	data_.realloc(newCapacity);
+	data_.realloc(newCapacity, 0);
 	capacity_ = newCapacity;
 	T* newData = data();
 	// Move the data to the new block
