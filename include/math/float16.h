@@ -52,7 +52,7 @@ struct float16 {
 
 	constexpr INLINE float16(uint16 bits_, InitUsingBits) noexcept : bits(bits_) {}
 
-	explicit float16(float f) noexcept {
+	[[nodiscard]] explicit float16(float f) noexcept {
 		static_assert(sizeof(float) == sizeof(FloatIntType));
 		FloatIntType fbits = *reinterpret_cast<const FloatIntType*>(&f);
 
@@ -145,7 +145,7 @@ struct float16 {
 		return *reinterpret_cast<const float*>(&fbits);
 	}
 
-	explicit float16(double f) noexcept {
+	[[nodiscard]] explicit float16(double f) noexcept {
 		static_assert(sizeof(double) == sizeof(DoubleIntType));
 		DoubleIntType fbits = *reinterpret_cast<const DoubleIntType*>(&f);
 
@@ -288,38 +288,38 @@ namespace std {
 
 		constexpr static int max_exponent10 = 4;
 
-		constexpr static float16 min() noexcept {
+		[[nodiscard]] constexpr static float16 min() noexcept {
 			// Exponent -14 and mantissa all zeros
 			return float16(0x0400, float16::InitUsingBits());
 		}
-		constexpr static float16 max() noexcept {
+		[[nodiscard]] constexpr static float16 max() noexcept {
 			// Exponent 15 and mantissa all ones
 			return float16(0x7BFF, float16::InitUsingBits());
 		}
-		constexpr static float16 lowest() noexcept {
+		[[nodiscard]] constexpr static float16 lowest() noexcept {
 			return -max();
 		}
-		constexpr static float16 epsilon() noexcept {
+		[[nodiscard]] constexpr static float16 epsilon() noexcept {
 			// Exponent -10 and mantissa all zeros
 			return float16(0x1400, float16::InitUsingBits());
 		}
-		constexpr static float16 round_error() noexcept {
+		[[nodiscard]] constexpr static float16 round_error() noexcept {
 			// Exponent -1 and mantissa all zeros
 			return float16(0x4000, float16::InitUsingBits());
 		}
-		constexpr static float16 infinity() noexcept {
+		[[nodiscard]] constexpr static float16 infinity() noexcept {
 			// Exponent 16 and mantissa all zeros
 			return float16(0x7C00, float16::InitUsingBits());
 		}
-		constexpr static float16 quiet_NaN() noexcept {
+		[[nodiscard]] constexpr static float16 quiet_NaN() noexcept {
 			// Exponent 16 and mantissa all zeros except highest bit
 			return float16(0x7E00, float16::InitUsingBits());
 		}
-		constexpr static float16 signaling_NaN() noexcept {
+		[[nodiscard]] constexpr static float16 signaling_NaN() noexcept {
 			// Exponent 16 and mantissa all zeros except 2nd-highest bit
 			return float16(0x7D00, float16::InitUsingBits());
 		}
-		constexpr static float16 denorm_min() noexcept {
+		[[nodiscard]] constexpr static float16 denorm_min() noexcept {
 			// Exponent -15 and mantissa all zeros except lowest bit
 			return float16(0x0001, float16::InitUsingBits());
 		}
