@@ -11,20 +11,74 @@
 #include <cstdlib> // For free and realloc
 #include <type_traits>
 
+#ifdef _WIN32
+#include <malloc.h> // For _aligned_realloc
+#else
+#include <string.h> // For memcpy
+#endif
+
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
 
 template<typename T>
+T* typedRealloc(T* p, size_t newCapacity, size_t sizeToCopy) {
+	size_t numBytes = newCapacity*sizeof(T);
+#ifdef _WIN32
+	// 64-bit Windows standard allocator is always 16-byte aligned.
+	constexpr bool isDefaultOkay = (alignof(T) <= ((sizeof(void*) == 8) ? 16 : 8));
+#else
+	// Change this if using an allocator that doesn't guarantee 8-byte alignment.
+	constexpr bool isDefaultOkay = (alignof(T) <= 8);
+#endif
+	if constexpr (isDefaultOkay) {
+		return (T*)std::realloc(p, numBytes);
+	}
+	else {
+#ifdef _WIN32
+		return (T*)_aligned_realloc(p, numBytes, alignof(T));
+#else
+		T* newp = std::aligned_alloc(alignof(T), numBytes);
+		if (sizeToCopy != 0) {
+			assert(is_trivially_relocatable<T>::value);
+			memcpy(newp, p, sizeToCopy*sizeof(T));
+		}
+		if (p != nullptr) {
+			std::free(p);
+		}
+#endif
+	}
+}
+
+template<typename T>
+void typedFree(T* p) {
+	assert(p != nullptr);
+#ifdef _WIN32
+	// 64-bit Windows standard allocator is always 16-byte aligned.
+	constexpr bool isDefaultOkay = (alignof(T) <= ((sizeof(void*) == 8) ? 16 : 8));
+#else
+	constexpr bool isDefaultOkay = true;
+#endif
+	if constexpr (isDefaultOkay) {
+		std::free(p);
+	}
+	else {
+#ifdef _WIN32
+		_aligned_free(p);
+#endif
+	}
+}
+
+template<typename T>
 INLINE ArrayPtr<T>::~ArrayPtr() {
 	if (p != nullptr) {
-		free(p);
+		typedFree(p);
 	}
 }
 
 template<typename T>
 INLINE void ArrayPtr<T>::reset() {
 	if (p != nullptr) {
-		free(p);
+		typedFree(p);
 		p = nullptr;
 	}
 }
@@ -36,18 +90,18 @@ INLINE void ArrayPtr<T>::reset(T* thatp) {
 		return;
 	}
 	if (p != nullptr) {
-		free(p);
+		typedFree(p);
 	}
 	p = thatp;
 }
 
 template<typename T>
-INLINE void ArrayPtr<T>::realloc(size_t newCapacity) {
+INLINE void ArrayPtr<T>::realloc(size_t newCapacity, size_t sizeToCopy) {
 	if (newCapacity == 0) {
 		reset();
 	}
 	else {
-		p = (T*)::realloc(p, newCapacity*sizeof(T));
+		p = typedRealloc(p, newCapacity, sizeToCopy);
 	}
 }
 
