@@ -52,6 +52,192 @@ struct float16 {
 
 	constexpr INLINE float16(uint16 bits_, InitUsingBits) noexcept : bits(bits_) {}
 
+	[[nodiscard]] constexpr explicit float16(int64 i) noexcept : bits(0) {
+		if (i == 0) {
+			return;
+		}
+		uint64 u(i);
+		if (i < 0) {
+			u = uint64(-i);
+			bits = 0x8000;
+		}
+		float16 f(u);
+		bits |= f.bits;
+	}
+
+	[[nodiscard]] constexpr explicit float16(uint64 u) noexcept : bits(0) {
+		if (u == 0) {
+			return;
+		}
+		uint32 exponent = bitScanReverse(u);
+		if (exponent <= MANTISSA_BITS) {
+			// One less added to exponent, since u will contribute one to exponent
+			bits |= uint16((exponent + EXP_EXCESS-1)<<MANTISSA_BITS) + uint16(u<<(MANTISSA_BITS-exponent));
+		}
+		else if (exponent < 16) {
+			bits |= uint16((exponent + EXP_EXCESS-1)<<MANTISSA_BITS) + uint16(u>>(exponent-MANTISSA_BITS));
+
+			// Round half to even.
+			bool odd = (bits & 1);
+			bool roundingBit = ((u>>(exponent-MANTISSA_BITS-1)) & 1);
+			bool nonzeroBelow = (u & ((uint64(1)<<(exponent-MANTISSA_BITS-1))-1));
+			bits += roundingBit && (odd || nonzeroBelow);
+		}
+		else {
+			// Infinity
+			bits |= uint16(0x7C00);
+		}
+	}
+
+	[[nodiscard]] constexpr INLINE explicit float16(int32 i) noexcept : float16(int64(i)) {}
+	[[nodiscard]] constexpr INLINE explicit float16(uint32 u) noexcept : float16(uint64(u)) {}
+	[[nodiscard]] constexpr INLINE explicit float16(int16 i) noexcept : float16(int64(i)) {}
+	[[nodiscard]] constexpr INLINE explicit float16(uint16 u) noexcept : float16(uint64(u)) {}
+	[[nodiscard]] constexpr INLINE explicit float16(int8 i) noexcept : float16(int64(i)) {}
+	[[nodiscard]] constexpr INLINE explicit float16(uint8 u) noexcept : float16(uint64(u)) {}
+
+	[[nodiscard]] constexpr explicit operator int64() const noexcept {
+		// For consistency with float and double, truncate toward zero.
+		int32 exponent = int32((bits>>MANTISSA_BITS) & EXP_MASK_SHIFT) - EXP_EXCESS;
+		if (exponent < 0) {
+			// Greater than -1 and less than 1, to truncate to zero.
+			return 0;
+		}
+		IntType mantissa = IntType(bits & MANTISSA_MASK);
+		bool negative = ((bits & 0x8000) != 0);
+		if (exponent >= 16) {
+			if (mantissa != 0) {
+				// NaN -> 0
+				return 0;
+			}
+			if (!negative) {
+				// Infinity -> 2^63 - 1
+				return std::numeric_limits<int64>::max();
+			}
+			// Negative infinity -> -2^63
+			return std::numeric_limits<int64>::min();
+		}
+
+		mantissa |= (IntType(1)<<MANTISSA_BITS);
+
+		// value will be in range [-65504, 65504], so int32 suffices.
+		int32 value = mantissa;
+		if (exponent < MANTISSA_BITS) {
+			// Truncate toward zero.
+			value >>= (MANTISSA_BITS - exponent);
+		}
+		else {
+			value <<= (exponent - MANTISSA_BITS);
+		}
+		if (negative) {
+			value = -value;
+		}
+		return value;
+	}
+
+	[[nodiscard]] constexpr explicit operator uint64() const noexcept {
+		bool negative = ((bits & 0x8000) != 0);
+		if (negative) {
+			// Negative values all go to zero,
+			// including negative infinity and negative NaN.
+			return 0;
+		}
+
+		// For consistency with float and double, truncate toward zero.
+		int32 exponent = int32((bits>>MANTISSA_BITS) & EXP_MASK_SHIFT) - EXP_EXCESS;
+		if (exponent < 0) {
+			// Greater than -1 and less than 1, to truncate to zero.
+			return 0;
+		}
+		IntType mantissa = IntType(bits & MANTISSA_MASK);
+		if (exponent >= 16) {
+			if (mantissa != 0) {
+				// NaN -> 0
+				return 0;
+			}
+			// Infinity -> 2^64 - 1
+			return std::numeric_limits<uint64>::max();
+		}
+
+		mantissa |= (IntType(1)<<MANTISSA_BITS);
+
+		// value will be in range [0, 65504], so uint32 suffices.
+		uint32 value = mantissa;
+		if (exponent < MANTISSA_BITS) {
+			// Truncate toward zero.
+			value >>= (MANTISSA_BITS - exponent);
+		}
+		else {
+			value <<= (exponent - MANTISSA_BITS);
+		}
+		return value;
+	}
+
+	[[nodiscard]] constexpr explicit operator int32() const noexcept {
+		int64 value = int64(*this);
+		if (value < std::numeric_limits<int32>::min()) {
+			return std::numeric_limits<int32>::min();
+		}
+		if (value > std::numeric_limits<int32>::max()) {
+			return std::numeric_limits<int32>::max();
+		}
+		return int32(value);
+	}
+
+	[[nodiscard]] constexpr explicit operator uint32() const noexcept {
+		uint64 value = uint64(*this);
+		if (value > std::numeric_limits<uint32>::max()) {
+			return std::numeric_limits<uint32>::max();
+		}
+		return uint32(value);
+	}
+
+	[[nodiscard]] constexpr explicit operator int16() const noexcept {
+		int64 value = int64(*this);
+		if (value < std::numeric_limits<int16>::min()) {
+			return std::numeric_limits<int16>::min();
+		}
+		if (value > std::numeric_limits<int16>::max()) {
+			return std::numeric_limits<int16>::max();
+		}
+		return int16(value);
+	}
+
+	[[nodiscard]] constexpr explicit operator uint16() const noexcept {
+		uint64 value = uint64(*this);
+		if (value > std::numeric_limits<uint16>::max()) {
+			return std::numeric_limits<uint16>::max();
+		}
+		return uint16(value);
+	}
+
+	[[nodiscard]] constexpr explicit operator int8() const noexcept {
+		int64 value = int64(*this);
+		if (value < std::numeric_limits<int8>::min()) {
+			return std::numeric_limits<int8>::min();
+		}
+		if (value > std::numeric_limits<int8>::max()) {
+			return std::numeric_limits<int8>::max();
+		}
+		return int8(value);
+	}
+
+	[[nodiscard]] constexpr explicit operator uint8() const noexcept {
+		uint64 value = uint64(*this);
+		if (value > std::numeric_limits<uint8>::max()) {
+			return std::numeric_limits<uint8>::max();
+		}
+		return uint8(value);
+	}
+
+	[[nodiscard]] constexpr INLINE explicit float16(bool b) noexcept : bits(b ? 0x3C00 : 0x0000) {}
+
+	// Returns true iff the value is not equal to zero (counting negative zero as zero),
+	// which is consistent with casting float or double to bool.
+	[[nodiscard]] constexpr explicit operator bool() const noexcept {
+		return ((bits & 0x7FFF) != 0x0000);
+	}
+
 	[[nodiscard]] explicit float16(float f) noexcept {
 		static_assert(sizeof(float) == sizeof(FloatIntType));
 		FloatIntType fbits = *reinterpret_cast<const FloatIntType*>(&f);
