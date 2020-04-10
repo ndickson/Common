@@ -121,6 +121,18 @@ class Queue;
 template<typename T, size_t BUF_N>
 class BufQueue;
 
+template<typename T, typename EXTRA_T>
+class SharedArray;
+
+class SharedString;
+class ShallowString;
+class UniqueString;
+
+template<typename VALUE_T, typename Hasher>
+class Set;
+template<typename KEY_T, typename VAL_T, typename Hasher>
+class Map;
+
 template<typename T>
 struct DefaultEquals {
 	static INLINE bool equals(const T& a, const T& b) {
