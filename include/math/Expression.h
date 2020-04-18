@@ -5,6 +5,7 @@
 // Definitions of the functions are in Expression.cpp
 
 #include "../Types.h"
+#include "../Array.h"
 
 OUTER_NAMESPACE_BEGIN
 namespace math {
@@ -162,6 +163,10 @@ enum class ItemType {
 	ARROW,
 	// param0'
 	COMPLEX_CONJUGATE,
+	// param0++
+	POSTFIX_INCREMENT,
+	// param0--
+	POSTFIX_DECREMENT,
 
 	// If param0 is a TYPE:
 	// (param0)param1 has prefix precedence
@@ -170,6 +175,32 @@ enum class ItemType {
 	TYPE_CAST,
 
 	// param0::param1
+	SCOPE
+};
+
+enum class Precedence {
+	NOT_APPLICABLE,
+	SEMICOLON,
+	COLON,
+	COMMA,
+	ERRORBAR,
+	ASSIGNMENT,
+	LOGICAL_OR,
+	LOGICAL_AND,
+	BITWISE_OR,
+	BITWISE_XOR,
+	BITWISE_AND,
+	EQUALITY,
+	ORDER,
+	THREE_WAY_COMPARE,
+	SHIFT,
+	ADDITION,
+	IMPLICIT_OPERATOR,
+	MULTIPLICATION,
+	POWER,
+	MEMBER_POINTER_DEREF,
+	PREFIX,
+	POSTFIX,
 	SCOPE
 };
 
