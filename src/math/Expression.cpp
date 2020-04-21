@@ -181,7 +181,7 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			// First, handle hex literals.
 			bool isInteger = true;
 			bool isHex = false;
-			if (text != end && *text != 0) {
+			if (text != end && *text != 0 && c == '0') {
 				char c1 = *text;
 				if ((c1|0x20) == 'x') {
 					isHex = true;
@@ -197,7 +197,7 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			// Skip initial digits.
 			while (text != end) {
 				char c1 = *text;
-				if (c1 < '0' || c1 > '9') {
+				if ((c1 < '0' || c1 > '9') && (!isHex || ((c1|0x20) < 'a' || (c1|0x20) > 'f'))) {
 					break;
 				}
 				++text;
@@ -208,7 +208,7 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 				// Skip digits after dot.
 				while (text != end) {
 					char c1 = *text;
-					if (c1 < '0' || c1 > '9') {
+					if ((c1 < '0' || c1 > '9') && (!isHex || ((c1|0x20) < 'a' || (c1|0x20) > 'f'))) {
 						break;
 					}
 					++text;
