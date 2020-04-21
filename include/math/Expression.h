@@ -32,7 +32,7 @@ enum class ItemType {
 	PARENTHESES,
 	// While parsing: [param]
 	// After parsing: param0[param1]
-	SQUARE_BARCKETS,
+	SQUARE_BRACKETS,
 	// While parsing: {param}
 	// After parsing: {param0,param1,param2,param3} since all values should be kept
 	// if was COMMA inside.
@@ -47,6 +47,11 @@ enum class ItemType {
 
 	// param0: param1
 	COLON,
+
+	// This is just used internally, since the second argument of
+	// a ternary operator is treated as being in parentheses, so
+	// has a lower effective precedence than the first or third arguments.
+	TERNARY_PARTIAL,
 
 	// param0, param1, param2, param3
 	// If FUNCTION(COMMA), replaced with FUNCTION_CALL: param0(param1,param2,param3,param4)
@@ -131,6 +136,8 @@ enum class ItemType {
 	DIVIDE,
 	// param0 % param1
 	MODULUS,
+	// param0 \\ param1
+	LEFT_DIVIDE,
 
 	// param0 ** param1
 	POWER,
@@ -180,6 +187,7 @@ enum class ItemType {
 
 enum class Precedence {
 	NOT_APPLICABLE,
+	BRACKET,
 	SEMICOLON,
 	COLON,
 	COMMA,
