@@ -4,6 +4,7 @@
 
 #include "math/Expression.h"
 #include "text/EscapeText.h"
+#include "text/NumberText.h"
 #include "text/TextFunctions.h"
 #include "../Types.h"
 #include "../Array.h"
@@ -25,12 +26,14 @@ static Precedence precedences[] = {
 	Precedence::NOT_APPLICABLE,
 	Precedence::NOT_APPLICABLE,
 
-	Precedence::NOT_APPLICABLE,
-	Precedence::NOT_APPLICABLE,
-	Precedence::NOT_APPLICABLE,
-	Precedence::NOT_APPLICABLE,
+	Precedence::BRACKET,
+	Precedence::BRACKET,
+	Precedence::BRACKET,
+	Precedence::BRACKET,
 
 	Precedence::SEMICOLON,
+
+	Precedence::COLON,
 
 	Precedence::COLON,
 
@@ -118,6 +121,9 @@ static void popOperatorStack(
 		ItemType stackOp = operatorStack.last().type;
 		Precedence stackPrecedence = precedences[size_t(stackOp)];
 		if (size_t(precedence) <= size_t(stackPrecedence)-isRightToLeft) {
+			if (operatorStack.last().type == ItemType::TERNARY_PARTIAL) {
+				// FIXME: This is invalid, so it may be worth producing an error.
+			}
 			output.append(operatorStack.last());
 			operatorStack.removeLast();
 			// FIXME: Handle functions!!!
@@ -169,19 +175,157 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 		++text;
 
 		if (c >= '0' && c <= '9') {
+			// Integer or floating-point literal
 
+			const char* numberBegin = text-1;
+			// First, handle hex literals.
+			bool isInteger = true;
+			bool isHex = false;
+			if (text != end && *text != 0) {
+				char c1 = *text;
+				if ((c1|0x20) == 'x') {
+					isHex = true;
+					++text;
+					numberBegin = text;
+					if (text == end || *text == 0) {
+						// Unexpected end
+						return false;
+					}
+					c = *text;
+				}
+			}
+			// Skip initial digits.
+			while (text != end) {
+				char c1 = *text;
+				if (c1 < '0' || c1 > '9') {
+					break;
+				}
+				++text;
+			}
+			if (text != end && (*text == '.')) {
+				isInteger = false;
+				++text;
+				// Skip digits after dot.
+				while (text != end) {
+					char c1 = *text;
+					if (c1 < '0' || c1 > '9') {
+						break;
+					}
+					++text;
+				}
+			}
+			if (text != end && ((*text | 0x20) == (isHex ? 'p' : 'e'))) {
+				isInteger = false;
+				++text;
+				if (text == end || *text == 0) {
+					// Unexpected end
+					return false;
+				}
+				// Skip optional "+" or "-" in exponent.
+				if ((*text == '+') || (*text == '-')) {
+					++text;
+				}
+				// Skip exponent digits.
+				bool hasExponent = false;
+				while (text != end) {
+					char c1 = *text;
+					if (c1 < '0' || c1 > '9') {
+						break;
+					}
+					hasExponent = true;
+					++text;
+				}
+				if (!hasExponent) {
+					// There must be an exponent after p or e.
+					return false;
+				}
+			}
+
+			ItemType type = isInteger ? ItemType::INTEGER_LITERAL : ItemType::FLOAT_LITERAL;
+
+			// FIXME: Handle suffixes!!! (f, F, l, or L for float; u, ul, ull, or case changes thereof for integer)
+
+			if (text != end) {
+				char c = *text;
+				if (((c | 0x20) >= 'a' && (c | 0x20) <= 'z') || c == '_' || (c >= '0' && c <= '9')) {
+					// Alphanumeric characters can't immediately follow a numeric literal.
+					return false;
+				}
+			}
+
+			if (expectingUnary) {
+				output.append(Item{type, 0, tokenStart, text});
+			}
+			else {
+				// FIXME: Support implicit binary operator!!!
+				unexpectedUnary = true;
+			}
 		}
 		else if (((c | 0x20) >= 'a' && (c | 0x20) <= 'z') || c == '_') {
+			// Keyword, type, function, variable, or new identifier.
 
+			// Skip over all alphanumeric characters.
+			while (text != end && *text != 0) {
+				c = *text;
+				if (((c | 0x20) >= 'a' && (c | 0x20) <= 'z') || c == '_' || (c >= '0' && c <= '9')) {
+					++text;
+				}
+				else {
+					break;
+				}
+			}
 
+			// FIXME: Check the type!!!
+			ItemType type = ItemType::IDENTIFIER;
+
+			if (expectingUnary) {
+				output.append(Item{type, 0, tokenStart, text});
+			}
+			else {
+				// FIXME: Support implicit binary operator!!!
+				unexpectedUnary = true;
+			}
 		}
 		else if (c == '(' || c == '[' || c == '{') {
-
+			ItemType type = (c == '(') ? ItemType::PARENTHESES :
+				((c == '[') ? ItemType::SQUARE_BRACKETS : ItemType::CURLY_BRACES);
+			if (!expectingUnary) {
+				// FIXME: Handle implicit binary operator!!!
+			}
+			operatorStack.append(Item{type,1,tokenStart,text});
 		}
 		else if (c == ')' || c == ']' || c == '}') {
+			while (operatorStack.size() != 0) {
+				ItemType stackOp = operatorStack.last().type;
+				Precedence stackPrecedence = precedences[size_t(stackOp)];
+				if (stackPrecedence <= Precedence::BRACKET) {
+					break;
+				}
+				output.append(operatorStack.last());
+				operatorStack.removeLast();
+				// FIXME: Handle functions!!!
+			}
 
+			if (operatorStack.size() == 0) {
+				// Missing start bracket
+				return false;
+			}
+			ItemType type = (c == ')') ? ItemType::PARENTHESES :
+				((c == ']') ? ItemType::SQUARE_BRACKETS : ItemType::CURLY_BRACES);
+			ItemType stackOp = operatorStack.last().type;
+			if (type != stackOp) {
+				// Mismatched brackets
+				return false;
+			}
+			output.append(operatorStack.last());
+			operatorStack.removeLast();
 		}
 		else if (c == ';' || c == ',') {
+			// FIXME: Implement this!!!
+
+
+
+
 
 		}
 		else if (c == '=') {
@@ -424,15 +568,56 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			}
 		}
 		else if (c == '<' || c == '>') {
-			// FIXME: Implement this!!!
+			if (text == end || *text == 0) {
+				// Unexpected end
+				return false;
+			}
+			char c1 = *text;
+			ItemType type = (c == '<') ? ItemType::LESS : ItemType::GREATER;
+			if (c1 == '=') {
+				++text;
+				type = (c == '<') ? ItemType::LESS_OR_EQUAL : ItemType::GREATER_OR_EQUAL;
+			}
+
+			// FIXME: Handle angle brackets case!!!
+
+			unexpectedBinary = !appendBinaryOperator(type, output, operatorStack, expectingUnary, false, tokenStart, text);
 		}
 		else if (c == '?') {
-			// FIXME: Implement this!!!
-
+			ItemType type = ItemType::TERNARY;
+			unexpectedBinary = !appendBinaryOperator(type, output, operatorStack, expectingUnary, true, tokenStart, text);
+			if (!unexpectedBinary) {
+				// The precedence needs to be lower for the second argument, so that a comma between
+				// "?" and ":" will be treated as "condition ? (a, b) : c", instead of "((condition ? a), b) : c",
+				// since "condition ? a" isn't a complete expression.
+				assert(operatorStack.last().type == ItemType::TERNARY);
+				operatorStack.last().type = ItemType::TERNARY_PARTIAL;
+			}
 		}
 		else if (c == ':') {
-			// FIXME: Implement this!!!
-
+			if (expectingUnary) {
+				unexpectedBinary = true;
+			}
+			else {
+				while (operatorStack.size() != 0) {
+					Item& item = operatorStack.last();
+					if (item.type == ItemType::TERNARY_PARTIAL) {
+						item.type = ItemType::TERNARY;
+						++item.numParams;
+						break;
+					}
+					else {
+						Precedence precedence = precedences[size_t(item.type)];
+						if (precedence < Precedence::COLON) {
+							ItemType type = ItemType::COLON;
+							output.append(Item{type,2,tokenStart,text});
+							break;
+						}
+						output.append(item);
+						operatorStack.removeLast();
+					}
+				}
+			}
 		}
 		else if (c == '!') {
 			if (text == end || *text == 0) {
@@ -499,7 +684,20 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			char c1 = *text;
 			if (c1 >= '0' && c1 <= '9') {
 				// Floating-point literal
-				// FIXME: Implement this!!!
+				// FIXME: Implement a fast function to find the end of a floating-point literal in text!!!
+				double value;
+				size_t numberTextLength = text::textToDouble(text-1, end, value);
+				text += numberTextLength-1;
+
+				// FIXME: Handle suffixes!!!
+
+				if (expectingUnary) {
+					output.append(Item{ItemType::FLOAT_LITERAL, 0, tokenStart, text});
+				}
+				else {
+					// FIXME: Support implicit binary operator!!!
+					unexpectedUnary = true;
+				}
 			}
 			else {
 				ItemType type = ItemType::DOT;
