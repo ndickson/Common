@@ -28,16 +28,14 @@ enum class ItemType {
 	// While parsing: (param)
 	// Not kept after parsing.
 	// Replaced with FUNCTION_CALL: param0(param1,param2,param3,param4)
-	// Replaced with TYPE_CAST: (param0)param1
+	// Replaced with PREFIX_TYPE_CAST: (param0)param1
 	PARENTHESES,
-	// While parsing: [param]
-	// After parsing: param0[param1]
+	// After parsing, this may be replaced with SUBSCRIPT.
 	SQUARE_BRACKETS,
 	// While parsing: {param}
 	// After parsing: {param0,param1,param2,param3} since all values should be kept
 	// if was COMMA inside.
-	// Replaced with FUNCTION_CALL: param0{param1,param2,param3,param4}
-	// Replaced with TYPE_CAST: param0{param1} if param0 is a TYPE
+	// Replaced with BRACE_INITIALIZER: param0{param1,param2,param3,param4}
 	CURLY_BRACES,
 	// <param>
 	ANGLE_BRACKETS,
@@ -164,6 +162,9 @@ enum class ItemType {
 	// --param0
 	PREFIX_DECREMENT,
 
+	// (param0)param1 has prefix precedence
+	PREFIX_TYPE_CAST,
+
 	// param0.param1
 	DOT,
 	// param0->param1
@@ -175,11 +176,15 @@ enum class ItemType {
 	// param0--
 	POSTFIX_DECREMENT,
 
-	// If param0 is a TYPE:
-	// (param0)param1 has prefix precedence
-	// param0(param1) has postfix precedence, like a function call
-	// param0{param1} has postfix precedence, like a function call
-	TYPE_CAST,
+	// param0(param1,param2,param3,param4) has postfix precedence
+	// The implicit binary operator is after param0.
+	FUNCTION_CALL,
+	// param0[param1] has postfix precedence
+	// The implicit binary operator is after param0.
+	SUBSCRIPT,
+	// param0{param1,param2,param3,param4} has postfix precedence
+	// The implicit binary operator is after param0.
+	BRACE_INITIALIZER,
 
 	// param0::param1
 	SCOPE
