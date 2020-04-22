@@ -100,12 +100,16 @@ static Precedence precedences[] = {
 	Precedence::PREFIX,
 	Precedence::PREFIX,
 
+	Precedence::PREFIX,
+
 	Precedence::POSTFIX,
 	Precedence::POSTFIX,
 	Precedence::POSTFIX,
 	Precedence::POSTFIX,
 	Precedence::POSTFIX,
 
+	Precedence::POSTFIX,
+	Precedence::POSTFIX,
 	Precedence::POSTFIX,
 
 	Precedence::SCOPE
@@ -253,13 +257,13 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 				}
 			}
 
-			if (expectingUnary) {
-				output.append(Item{type, 0, tokenStart, text});
+			if (!expectingUnary) {
+				// Implicit binary operator
+				ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+				appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
-			else {
-				// FIXME: Support implicit binary operator!!!
-				unexpectedUnary = true;
-			}
+			output.append(Item{type, 0, tokenStart, text});
+			expectingUnary = false;
 		}
 		else if (((c | 0x20) >= 'a' && (c | 0x20) <= 'z') || c == '_') {
 			// Keyword, type, function, variable, or new identifier.
@@ -278,21 +282,25 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			// FIXME: Check the type!!!
 			ItemType type = ItemType::IDENTIFIER;
 
-			if (expectingUnary) {
-				output.append(Item{type, 0, tokenStart, text});
+			if (!expectingUnary) {
+				// Implicit binary operator
+				ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+				appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
-			else {
-				// FIXME: Support implicit binary operator!!!
-				unexpectedUnary = true;
-			}
+			output.append(Item{type, 0, tokenStart, text});
+			expectingUnary = false;
 		}
 		else if (c == '(' || c == '[' || c == '{') {
 			ItemType type = (c == '(') ? ItemType::PARENTHESES :
 				((c == '[') ? ItemType::SQUARE_BRACKETS : ItemType::CURLY_BRACES);
 			if (!expectingUnary) {
-				// FIXME: Handle implicit binary operator!!!
+				// Implicit binary operator, with higher precedence
+				ItemType implicitType = (c == '(') ? ItemType::FUNCTION_CALL :
+					((c == '[') ? ItemType::SUBSCRIPT : ItemType::BRACE_INITIALIZER);
+				appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
 			operatorStack.append(Item{type,1,tokenStart,text});
+			assert(expectingUnary);
 		}
 		else if (c == ')' || c == ']' || c == '}') {
 			while (operatorStack.size() != 0) {
@@ -630,33 +638,30 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 				ItemType type = ItemType::NOT_EQUAL;
 				unexpectedBinary = !appendBinaryOperator(type, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
-			else if (expectingUnary) {
-				ItemType type = ItemType::PREFIX_LOGICAL_NOT;
-
-				// FIXME: Handle if this is at the start of a first function parameter!!!
-
-				operatorStack.append(Item{type,1,tokenStart,text});
-			}
 			else {
-				// "!" can only be a unary operator.
-				// FIXME: Support implicit binary operator!!!
-				unexpectedUnary = true;
+				// Logical not "!"
+				ItemType type = ItemType::PREFIX_LOGICAL_NOT;
+				if (!expectingUnary) {
+					// "!" can only be a unary operator.
+					// Implicit binary operator
+					ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+					appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
+				}
+				output.append(Item{type, 1, tokenStart, text});
+				assert(expectingUnary);
 			}
 		}
 		else if (c == '~') {
-			if (expectingUnary) {
-				// Bitwise not "~"
-				ItemType type = ItemType::PREFIX_BITWISE_NOT;
-
-				// FIXME: Handle if this is at the start of a first function parameter!!!
-
-				operatorStack.append(Item{type,1,tokenStart,text});
-			}
-			else {
+			// Bitwise not "~"
+			ItemType type = ItemType::PREFIX_BITWISE_NOT;
+			if (!expectingUnary) {
 				// "~" can only be a unary operator.
-				// FIXME: Support implicit binary operator!!!
-				unexpectedUnary = true;
+				// Implicit binary operator
+				ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+				appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
+			output.append(Item{type, 1, tokenStart, text});
+			assert(expectingUnary);
 		}
 		else if (c == '\"' || c == '\'') {
 			// Quoted string
@@ -668,13 +673,15 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 			}
 			text += stringEscapedLength+1;
 
-			if (expectingUnary) {
-				output.append(Item{ItemType::STRING_LITERAL, 0, tokenStart, text});
+			ItemType type = ItemType::STRING_LITERAL;
+
+			if (!expectingUnary) {
+				// Implicit binary operator
+				ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+				appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 			}
-			else {
-				// FIXME: Support implicit binary operator!!!
-				unexpectedUnary = true;
-			}
+			output.append(Item{type, 0, tokenStart, text});
+			expectingUnary = false;
 		}
 		else if (c == '.') {
 			if (text == end || *text == 0) {
@@ -691,13 +698,15 @@ bool parseExpression(const char* begin, const char* end, Array<Item>& output) {
 
 				// FIXME: Handle suffixes!!!
 
-				if (expectingUnary) {
-					output.append(Item{ItemType::FLOAT_LITERAL, 0, tokenStart, text});
+				ItemType type = ItemType::FLOAT_LITERAL;
+
+				if (!expectingUnary) {
+					// Implicit binary operator
+					ItemType implicitType = ItemType::IMPLICIT_OPERATOR;
+					appendBinaryOperator(implicitType, output, operatorStack, expectingUnary, false, tokenStart, text);
 				}
-				else {
-					// FIXME: Support implicit binary operator!!!
-					unexpectedUnary = true;
-				}
+				output.append(Item{type, 0, tokenStart, text});
+				expectingUnary = false;
 			}
 			else {
 				ItemType type = ItemType::DOT;
