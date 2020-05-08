@@ -10,6 +10,7 @@
 #include <new> // For placement new operator
 #include <cstdlib> // For free and realloc
 #include <type_traits>
+#include <iterator> // For std::distance
 
 #ifdef _WIN32
 #include <malloc.h> // For _aligned_realloc
@@ -352,6 +353,35 @@ INLINE void Array<T>::append(T&& that) {
 	}
 	else {
 		*p = that;
+	}
+	size_ = newSize;
+}
+
+template<typename T>
+template<typename ITER_T>
+INLINE void Array<T>::append(ITER_T begin, const ITER_T end) {
+	const size_t numNew = std::distance(begin, end);
+	if (numNew == 0) {
+		return;
+	}
+	const size_t oldSize = size();
+	const size_t newSize = oldSize + numNew;
+	const size_t oldCapacity = capacity();
+	if (newSize > oldCapacity) {
+		const size_t coarse = coarseCapacity(oldCapacity);
+		increaseCapacity((newSize > coarse) ? newSize : coarse);
+	}
+	T*const oldEnd = data() + oldSize;
+	T*const newEnd = data() + newSize;
+	if constexpr (!std::is_pod<T>::value) {
+		for (T* p = oldEnd; p != newEnd; ++p, ++begin) {
+			new (p) T(*begin);
+		}
+	}
+	else {
+		for (T* p = oldEnd; p != newEnd; ++p, ++begin) {
+			*p = *begin;
+		}
 	}
 	size_ = newSize;
 }
