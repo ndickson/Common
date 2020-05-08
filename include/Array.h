@@ -205,6 +205,8 @@ public:
 
 	INLINE void append(const T& that, const size_t numCopies=1);
 	INLINE void append(T&& that);
+	template<typename ITER_T>
+	INLINE void append(ITER_T begin, const ITER_T end);
 
 	// There must be at least one element in the array for this to be valid.
 	INLINE void removeLast() {
