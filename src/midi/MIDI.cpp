@@ -10,6 +10,7 @@
 #include "ArrayDef.h"
 #include "Types.h"
 
+#define MIDI_DEBUG 0
 
 OUTER_NAMESPACE_BEGIN
 namespace midi {
@@ -48,6 +49,8 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 
 	data += sizeof(FileHeader);
 	size -= sizeof(FileHeader);
+
+	Array<Event> tempoTrack;
 
 	for (int trackNum = 0; trackNum < nTracks; ++trackNum) {
 		if (size < sizeof(TrackHeader)) {
@@ -151,6 +154,7 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 							otherNote.duration = currentTime - otherNote.startTime;
 
 							// Remove the note from activeNotes.
+							// NOTE: This works even if i == n-1
 							activeNotes[i] = activeNotes.last();
 							activeNotes.setSize(n-1);
 							endedNote = true;
@@ -213,8 +217,67 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 					--trackSize;
 					const char* intData = data;
 					int messageLength = parseVariableSizeInt(intData, data+trackSize);
+					// FIXME: Is the int length included in messageLength in this case?
+					trackSize -= (intData - data);
+					data = intData;
 					if (messageLength < 0 || messageLength > trackSize) {
 						return false;
+					}
+
+					if (metaEvent == MetaEventType::SET_TEMPO) {
+						if (messageLength == 3) {
+							uint32 microsecondsPerQuarterNote =
+								(uint32(uint8(data[0]))<<16) | (uint32(uint8(data[1]))<<8) | uint32(uint8(data[2]));
+							Event event;
+							event.time = currentTime;
+							event.type = FullEventType::SET_TEMPO;
+							event.numbers[0] = microsecondsPerQuarterNote;
+							event.numbers[1] = 0;
+							event.numbers[2] = 0;
+
+#if MIDI_DEBUG
+							printf("Tempo of quarter = %f (%u us/quarter) at time %zu\n", (60.0*1e6)/microsecondsPerQuarterNote, microsecondsPerQuarterNote, currentTime);
+							fflush(stdout);
+#endif
+
+							tempoTrack.append(std::move(event));
+						}
+					}
+					else if (metaEvent == MetaEventType::TIME_SIGNATURE) {
+						if (messageLength == 4) {
+							uint32 numerator = data[0];
+							uint32 logDenominator = data[1];
+							Event event;
+							event.time = currentTime;
+							event.type = FullEventType::TIME_SIGNATURE;
+							event.numbers[0] = (int64(numerator)<<32) | int64(logDenominator);
+							event.numbers[1] = int64(data[2]);
+							event.numbers[2] = int64(data[3]);
+
+#if MIDI_DEBUG
+							printf("Time signature of %u/%u (additional data: %u %u) at time %zu\n", numerator, uint32(1)<<logDenominator, uint32(data[2]), uint32(data[3]), currentTime);
+							fflush(stdout);
+#endif
+
+							tempoTrack.append(std::move(event));
+						}
+					}
+					else if (metaEvent == MetaEventType::KEY_SIGNATURE) {
+						if (messageLength == 2) {
+							Event event;
+							event.time = currentTime;
+							event.type = FullEventType::KEY_SIGNATURE;
+							event.numbers[0] = int64(int8(data[0]));
+							event.numbers[1] = int64(data[1]);
+							event.numbers[2] = 0;
+
+#if MIDI_DEBUG
+							printf("Key signature of %d sharps %s at time %zu\n", int(event.numbers[0]), event.numbers[1] ? "major" : "minor", currentTime);
+							fflush(stdout);
+#endif
+
+							tempoTrack.append(std::move(event));
+						}
 					}
 
 					// Currently ignored
@@ -239,7 +302,21 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 		data = endOfTrack;
 	}
 
+	if (tempoTrack.size() != 0) {
+		tracks.trackChannels.setSize(tracks.trackChannels.size() + 1);
+		TrackChannel& outputTrack = tracks.trackChannels.last();
+		outputTrack.trackNum = nTracks;
+		outputTrack.channelNum = 0;
+		outputTrack.events = std::move(tempoTrack);
+	}
+
 	return true;
+}
+
+bool WriteMIDIFile(const char* filename, const MIDITracks& tracks)
+{
+	// FIXME: Implement this!!!
+	return false;
 }
 
 } // namespace midi
