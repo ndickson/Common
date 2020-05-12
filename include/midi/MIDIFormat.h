@@ -8,7 +8,7 @@
 OUTER_NAMESPACE_BEGIN
 namespace midi {
 
-using namespace Common;
+using namespace COMMON_LIBRARY_NAMESPACE;
 
 // Enable struct packing, to avoid any padding bytes, since
 // MIDI file format structures can otherwise end up with extra bytes.
@@ -99,7 +99,7 @@ constexpr inline int parseVariableSizeInt(const char*& data, const char* end) {
 
 	int value = int(c & ~continueBitMask);
 
-	for (; data != end; ++data) {
+	while (data != end) {
 		// Higher bits come earlier in the data bytes of this integer (big-endian-ish).
 		// 7 data bits per byte in this encoding
 		value <<= 7;
