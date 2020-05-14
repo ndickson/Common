@@ -15,6 +15,38 @@
 OUTER_NAMESPACE_BEGIN
 namespace midi {
 
+static void findOrAddTrackChannel(
+	MIDITracks& tracks,
+	size_t channel,
+	size_t trackNum,
+	int& currentChannel,
+	size_t& currentOutputTrack
+) {
+	if (channel != currentChannel) {
+		// Find the output track with this input track and channel.
+		size_t numOutputTracks = tracks.trackChannels.size();
+		for (size_t outputTracki = 0; outputTracki != numOutputTracks; ++outputTracki) {
+			if (tracks.trackChannels[outputTracki].trackNum == trackNum &&
+				tracks.trackChannels[outputTracki].channelNum == channel
+			) {
+				currentOutputTrack = outputTracki;
+				currentChannel = int(channel);
+				break;
+			}
+		}
+
+		// If none exists yet, create one.
+		if (channel != currentChannel) {
+			currentOutputTrack = numOutputTracks;
+			tracks.trackChannels.setSize(numOutputTracks + 1);
+			TrackChannel& outputTrack = tracks.trackChannels.last();
+			outputTrack.trackNum = trackNum;
+			outputTrack.channelNum = channel;
+			currentChannel = int(channel);
+		}
+	}
+}
+
 bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 	// Pre-emptively clear tracks, in case there's no valid content.
 	tracks.ticksPerUnit = 0;
@@ -52,7 +84,12 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 
 	Array<Event> tempoTrack;
 
-	for (int trackNum = 0; trackNum < nTracks; ++trackNum) {
+	for (size_t trackNum = 0; trackNum < nTracks; ++trackNum) {
+#if MIDI_DEBUG
+		printf("Starting track number %d\n", int(trackNum));
+		fflush(stdout);
+#endif
+
 		if (size < sizeof(TrackHeader)) {
 			return false;
 		}
@@ -113,29 +150,7 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 				}
 				const bool isOn = eventType == EventType::NOTE_ON && noteVelocity > 0;
 				if (isOn) {
-					if (channel != currentChannel) {
-						// Find the output track with this input track and channel.
-						size_t numOutputTracks = tracks.trackChannels.size();
-						for (size_t outputTracki = 0; outputTracki != numOutputTracks; ++outputTracki) {
-							if (tracks.trackChannels[outputTracki].trackNum == trackNum &&
-								tracks.trackChannels[outputTracki].channelNum == channel
-							) {
-								currentOutputTrack = outputTracki;
-								currentChannel = int(channel);
-								break;
-							}
-						}
-
-						// If none exists yet, create one.
-						if (channel != currentChannel) {
-							currentOutputTrack = numOutputTracks;
-							tracks.trackChannels.setSize(numOutputTracks + 1);
-							TrackChannel& outputTrack = tracks.trackChannels.last();
-							outputTrack.trackNum = trackNum;
-							outputTrack.channelNum = channel;
-							currentChannel = int(channel);
-						}
-					}
+					findOrAddTrackChannel(tracks, channel, trackNum, currentChannel, currentOutputTrack);
 					TrackChannel& outputTrack = tracks.trackChannels[currentOutputTrack];
 					activeNotes.append(TrackAndIndex{currentOutputTrack, outputTrack.notes.size()});
 
@@ -176,8 +191,34 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 				data += 3;
 				trackSize -= 3;
 			}
-			else if (eventType == EventType::PROGRAM_CHANGE || eventType == EventType::CHANNEL_AFTERTOUCH) {
+			else if (eventType == EventType::PROGRAM_CHANGE) {
 				// These types of events are 2 bytes long.
+				if (trackSize < 2) {
+					return false;
+				}
+				// These events are currently ignored.
+				const size_t channel = eventCode.channel;
+				const size_t instrument = uint8(data[1]);
+				Event event;
+				event.time = currentTime;
+				event.type = FullEventType::PROGRAM_CHANGE;
+				event.numbers[0] = instrument;
+				event.numbers[1] = 0;
+				event.numbers[2] = 0;
+
+#if MIDI_DEBUG
+				printf("Instrument change to %d on channel %d at time %zu\n", int(uint8(data[1])), int(channel), currentTime);
+				fflush(stdout);
+#endif
+
+				findOrAddTrackChannel(tracks, channel, trackNum, currentChannel, currentOutputTrack);
+				TrackChannel& outputTrack = tracks.trackChannels[currentOutputTrack];
+				outputTrack.events.append(std::move(event));
+				data += 2;
+				trackSize -= 2;
+			}
+			else if (eventType == EventType::CHANNEL_AFTERTOUCH) {
+				// This type of event is 2 bytes long.
 				if (trackSize < 2) {
 					return false;
 				}
@@ -279,6 +320,100 @@ bool ReadMIDIFile(const char* filename, MIDITracks& tracks) {
 							tempoTrack.append(std::move(event));
 						}
 					}
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::SEQUENCE_NUMBER) {
+						if (messageLength == 2) {
+							printf("Sequence number %d at time %zu\n", int((uint32(uint8(data[0]))<<8) | uint8(data[1])), currentTime);
+							fflush(stdout);
+						}
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::TEXT) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Text event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::COPYRIGHT_NOTICE) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Copyright event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::TRACK_NAME) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Track name event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::INSTRUMENT_NAME) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Instrument name event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::LYRIC) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Lyric event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::MARKER) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Marker event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::CUE_POINT) {
+						Array<char> text;
+						text.setCapacity(messageLength+1);
+						text.append(data, data+messageLength);
+						text.append(0);
+						printf("Cue event \"%s\" at time %zu\n", text.data(), currentTime);
+						fflush(stdout);
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::CHANNEL_PREFIX) {
+						if (messageLength == 1) {
+							printf("Channel event, channel %d at time %zu\n", int(uint8(data[0])), currentTime);
+							fflush(stdout);
+						}
+					}
+#endif
+#if MIDI_DEBUG
+					else if (metaEvent == MetaEventType::END_OF_TRACK) {
+						if (messageLength == 0) {
+							printf("End of track event at time %zu\n", currentTime);
+							fflush(stdout);
+						}
+					}
+#endif
 
 					// Currently ignored
 
