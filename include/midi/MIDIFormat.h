@@ -147,7 +147,7 @@ union EventCode {
 
 // If EventCode::code is SYSEX_META, this value is the byte that follows.
 enum class MetaEventType {
-	SEQENCE_NUMBER = 0x00,  // Length should be 2; 2-byte integer
+	SEQUENCE_NUMBER = 0x00, // Length should be 2; 2-byte integer
 	TEXT,                   // Text
 	COPYRIGHT_NOTICE,       // Text
 	TRACK_NAME,             // Text
