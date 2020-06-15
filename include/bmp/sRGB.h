@@ -85,5 +85,8 @@ using namespace COMMON_LIBRARY_NAMESPACE;
 	);
 }
 
+// This uses an approximation that should be faster and good enough for most uses.
+COMMON_LIBRARY_EXPORTED void linearToSRGB(const Vec4f* linear, uint32* sRGB, size_t n);
+
 } // namespace bmp
 OUTER_NAMESPACE_END
