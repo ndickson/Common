@@ -76,9 +76,9 @@ void linearToSRGB(const Vec4f* linear, uint32* sRGB, size_t n) {
 		const __m128 sqrtFloats = _mm_sqrt_ps(_mm_castsi128_ps(linearInts));
 		const __m128i largeInts = _mm_castps_si128(sqrtFloats);
 		const __m128i indices = _mm_cvttps_epi32(_mm_castsi128_ps(_mm_add_epi32(largeInts, exponentAdd3)));
-		const int32 indexA = reinterpret_cast<const int32*>(&indices)[0];
-		const int32 indexB = reinterpret_cast<const int32*>(&indices)[1];
-		const int32 indexC = reinterpret_cast<const int32*>(&indices)[2];
+		const uint32 indexA = reinterpret_cast<const uint32*>(&indices)[0];
+		const uint32 indexB = reinterpret_cast<const uint32*>(&indices)[1];
+		const uint32 indexC = reinterpret_cast<const uint32*>(&indices)[2];
 
 		// Look up the coefficients for the indices.
 		const __m128 polynomialA = _mm_castsi128_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(linearToSRGBPolynomials[indexA])));
@@ -103,6 +103,7 @@ void linearToSRGB(const Vec4f* linear, uint32* sRGB, size_t n) {
 
 		// Combine and round to integers
 		const __m128 allFloats = _mm_or_ps(smallFloats, _mm_andnot_ps(_mm_castsi128_ps(smallMask), powFloats));
+		// TODO: Use roundps to avoid dependence on rounding mode?
 		const __m128i roundedInts = _mm_cvtps_epi32(allFloats);
 
 		// Store, remembering to swap components 0 and 2 for BGRA ordering.
