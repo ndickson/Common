@@ -232,6 +232,13 @@ template<typename T, typename ...Ts>
 	return max(first, cs...);
 }
 
+// NOTE: The standard requires returning the first parameter (value) if equal to either bound.
+// Also, upperBound cannot be less than lowerBound.
+template<typename T>
+[[nodiscard]] constexpr INLINE const T& clamp(const T& value, const T& lowerBound, const T& upperBound) {
+	return (value < lowerBound) ? lowerBound : ((upperBound < value) ? upperBound : value);
+}
+
 // These are default implementations that do nothing for float, double, or integer types.
 [[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
 	return v;
