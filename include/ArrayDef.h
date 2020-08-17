@@ -430,6 +430,7 @@ INLINE BufArray<T,BUF_N>& BufArray<T,BUF_N>::operator=(BufArray<T,BUF_N>&& that)
 	// Delegate to the more general move assignment operator that takes an Array,
 	// since there's no significant benefit to taking a BufArray.
 	*this = std::move(static_cast<Array<T>&&>(that));
+	return *this;
 }
 
 template<typename T, size_t BUF_N>
@@ -445,6 +446,7 @@ INLINE BufArray<T,BUF_N>& BufArray<T,BUF_N>::operator=(const BufArray<T,BUF_N>& 
 	// Delegate to the more general copy assignment operator that takes an Array,
 	// since there's no significant benefit to taking a BufArray.
 	*this = std::move(static_cast<Array<T>&&>(that));
+	return *this;
 }
 
 template<typename T, size_t BUF_N>
