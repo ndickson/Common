@@ -208,6 +208,30 @@ template<typename T>
 	return (v < 0) ? -v : v;
 }
 
+// NOTE: The standard requires returning the first parameter if equal.
+template<typename T>
+[[nodiscard]] constexpr INLINE const T& min(const T& a, const T& b) {
+	return (b < a) ? b : a;
+}
+// This version accepts 3 or more parameters.
+template<typename T, typename ...Ts>
+[[nodiscard]] constexpr INLINE const T& min(const T& a, const T&b, const Ts&... cs) {
+	const T& first = (b < a) ? b : a;
+	return min(first, cs...);
+}
+
+// NOTE: The standard requires returning the first parameter if equal.
+template<typename T>
+[[nodiscard]] constexpr INLINE const T& max(const T& a, const T& b) {
+	return (a < b) ? b : a;
+}
+// This version accepts 3 or more parameters.
+template<typename T, typename ...Ts>
+[[nodiscard]] constexpr INLINE const T& max(const T& a, const T&b, const Ts&... cs) {
+	const T& first = (a < b) ? b : a;
+	return max(first, cs...);
+}
+
 // These are default implementations that do nothing for float, double, or integer types.
 [[nodiscard]] constexpr INLINE const float& conjugate(const float& v) {
 	return v;
