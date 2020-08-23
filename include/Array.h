@@ -7,6 +7,9 @@
 
 #include "Types.h"
 #include <type_traits>
+#include <initializer_list>
+
+#include <assert.h>
 
 OUTER_NAMESPACE_BEGIN
 COMMON_LIBRARY_NAMESPACE_BEGIN
@@ -142,6 +145,9 @@ public:
 	// Copy assignment operator
 	Array<T>& operator=(const Array<T>& that);
 
+	// Initializer constructor
+	Array(std::initializer_list<T> list);
+
 	[[nodiscard]] constexpr INLINE T* data() {
 		return data_.get();
 	}
@@ -173,15 +179,19 @@ public:
 		return data()+size_;
 	}
 	[[nodiscard]] constexpr INLINE T& operator[](size_t i) {
+		assert(i < size_);
 		return data_[i];
 	}
 	[[nodiscard]] constexpr INLINE const T& operator[](size_t i) const {
+		assert(i < size_);
 		return data_[i];
 	}
 	[[nodiscard]] constexpr INLINE T& last() {
+		assert(size_ > 0);
 		return data_[size_-1];
 	}
 	[[nodiscard]] constexpr INLINE const T& last() const {
+		assert(size_ > 0);
 		return data_[size_-1];
 	}
 
@@ -210,6 +220,7 @@ public:
 
 	// There must be at least one element in the array for this to be valid.
 	INLINE void removeLast() {
+		assert(size_ > 0);
 		--size_;
 		if (!std::is_pod<T>::value) {
 			data_[size_].~T();
