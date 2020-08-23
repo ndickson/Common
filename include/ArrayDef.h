@@ -142,7 +142,7 @@ Array<T>::Array(const Array<T>& that) : data_(nullptr), size_(0), capacity_(0) {
 	T* begin = data();
 	T* end = begin + that.size_;
 	const T* source = that.data();
-	copyConstructSpan(begin, end, list.begin());
+	copyConstructSpan(begin, end, source);
 }
 
 template<typename T>
@@ -219,8 +219,8 @@ Array<T>::Array(std::initializer_list<T> list) : data_(nullptr), size_(0), capac
 	size_ = listSize;
 	T* begin = data();
 	T* end = begin + listSize;
-	const T* source = that.data();
-	copyConstructSpan(begin, end, list.begin());
+	const T* source = list.begin();
+	copyConstructSpan(begin, end, source);
 }
 
 template<typename T>
