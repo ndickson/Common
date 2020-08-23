@@ -133,24 +133,16 @@ Array<T>::Array(Array<T>&& that) : data_(nullptr) {
 
 template<typename T>
 Array<T>::Array(const Array<T>& that) : data_(nullptr), size_(0), capacity_(0) {
-	if (size_ == 0) {
+	if (that.size_ == 0) {
 		return;
 	}
-	// Only allocate up to size_
-	increaseCapacity(size_);
+	// Only allocate up to that.size_
+	increaseCapacity(that.size_);
+	size_ = that.size_;
 	T* begin = data();
-	T* end = begin + size_;
+	T* end = begin + that.size_;
 	const T* source = that.data();
-	if (!std::is_pod<T>::value) {
-		for (T* p = begin; p != end; ++p, ++source) {
-			new (p) T(*source);
-		}
-	}
-	else {
-		for (T* p = begin; p != end; ++p, ++source) {
-			*p = *source;
-		}
-	}
+	copyConstructSpan(begin, end, list.begin());
 }
 
 template<typename T>
@@ -166,13 +158,15 @@ Array<T>::~Array() {
 
 template<typename T>
 Array<T>& Array<T>::operator=(Array<T>&& that) {
+	assert(this != &that);
+
 	if (that.isLocalBuffer()) {
 		// Copy assign, since ownership of the buffer can't be taken.
 		*this = that;
 	}
 	else {
 		if (isLocalBuffer()) {
-			data.release();
+			data_.release();
 		}
 		data_.reset(that.data_.release());
 		size_ = that.size_;
@@ -189,8 +183,13 @@ Array<T>& Array<T>::operator=(Array<T>&& that) {
 
 template<typename T>
 Array<T>& Array<T>::operator=(const Array<T>& that) {
+	if (this == &that) {
+		return *this;
+	}
+
 	// Only set capacity if growing to more than current capacity.
 	if (that.size_ > capacity_) {
+		// TODO: We don't care about the old data, so don't bother moving it.
 		increaseCapacity(that.size_);
 	}
 	const bool isGrowing = (size_ < that.size_);
@@ -207,6 +206,21 @@ Array<T>& Array<T>::operator=(const Array<T>& that) {
 	}
 	size_ = that.size_;
 	return *this;
+}
+
+template<typename T>
+Array<T>::Array(std::initializer_list<T> list) : data_(nullptr), size_(0), capacity_(0) {
+	const size_t listSize = list.size();
+	if (listSize == 0) {
+		return;
+	}
+	// Only allocate up to listSize
+	increaseCapacity(listSize);
+	size_ = listSize;
+	T* begin = data();
+	T* end = begin + listSize;
+	const T* source = that.data();
+	copyConstructSpan(begin, end, list.begin());
 }
 
 template<typename T>
