@@ -4,8 +4,10 @@
 #include "ArrayDef.h"
 #include "Types.h"
 #include "text/UTF.h"
+#include "text/TextFunctions.h"
 
 #include <atomic>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -13,7 +15,6 @@
 #undef CreateFile
 #undef ABSOLUTE
 #undef RELATIVE
-#include <string.h>
 #else
 #include <stdio.h>
 #endif
@@ -25,7 +26,7 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 static HANDLE CreateFileWrapper(const char* filename, DWORD accessMode, DWORD sharedMode, DWORD creationMode) {
 	// Windows: use Windows API, to avoid UTF problems
 	// with C++ standard library functions on Windows.
-	size_t utf8Length = strlen(filename);
+	size_t utf8Length = text::stringSize(filename);
 	size_t utf16Length = text::UTF16Length(filename, utf8Length);
 	static_assert(sizeof(wchar_t) == sizeof(uint16));
 	BufArray<uint16, MAX_PATH> filenameUTF16;
@@ -40,6 +41,41 @@ static HANDLE CreateFileWrapper(const char* filename, DWORD accessMode, DWORD sh
 	return fileHandle;
 }
 #endif
+
+// Returns true on success (even if no directories were created), and false on failure.
+COMMON_LIBRARY_EXPORTED bool CreateMissingDirectories(const char* filename) {
+	size_t currentBegin = 0;
+	for (size_t texti = 0; filename[texti] != 0; ++texti) {
+		char c = filename[texti];
+		if (c == '/' || c == '\\') {
+			if (currentBegin == texti) {
+				// Skip duplicate or initial slashes
+				++currentBegin;
+			}
+			// Check if directory already exists
+			// TODO: Find a way that avoids copying the string; std::filesystem::path constructs a std::wstring.
+			const std::filesystem::path currentPath(filename, filename+texti);
+			const std::filesystem::file_status status = std::filesystem::status(currentPath);
+			if (status.type() == std::filesystem::file_type::not_found) {
+				// Create new directory.
+				bool success = std::filesystem::create_directory(currentPath);
+				if (!success) {
+					// Possibly an invalid filename
+					return false;
+				}
+			}
+			else if (status.type() != std::filesystem::file_type::directory) {
+				// Conflicting file that's not a directory!
+				return false;
+			}
+			// Next name starts after the slash.
+			currentBegin = texti+1;
+		}
+	}
+
+	return true;
+}
+
 
 COMMON_LIBRARY_EXPORTED bool ReadWholeFile(const char* filename, Array<char>& contents) {
 #if _WIN32
@@ -136,13 +172,16 @@ COMMON_LIBRARY_EXPORTED bool ReadWholeFile(const char* filename, Array<char>& co
 }
 
 COMMON_LIBRARY_EXPORTED bool WriteWholeFile(const char* filename, const void* contents, size_t length) {
+	bool success = CreateMissingDirectories(filename);
+	if (!success) {
+		return false;
+	}
 #if _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, 0, CREATE_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
 		return false;
 	}
 
-	bool success;
 	if (length < (1ULL<<31)) {
 		// Single write
 		// A threshold of (1ULL<<32) above would probably work, too,
@@ -180,7 +219,7 @@ COMMON_LIBRARY_EXPORTED bool WriteWholeFile(const char* filename, const void* co
 	}
 
 	size_t numBytesWritten = fwrite(contents, 1, length, file);
-	bool success = (length == numBytesWritten);
+	success = (length == numBytesWritten);
 
 	fclose(file);
 
@@ -240,6 +279,10 @@ COMMON_LIBRARY_EXPORTED size_t FileHandle::getRefCount() noexcept {
 }
 
 COMMON_LIBRARY_EXPORTED WriteFileHandle CreateFile(const char* filename) {
+	bool success = CreateMissingDirectories(filename);
+	if (!success) {
+		return WriteFileHandle();
+	}
 #ifdef _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, CREATE_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
@@ -272,6 +315,10 @@ COMMON_LIBRARY_EXPORTED ReadFileHandle OpenFileRead(const char* filename) {
 }
 
 COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename) {
+	bool success = CreateMissingDirectories(filename);
+	if (!success) {
+		return WriteFileHandle();
+	}
 #ifdef _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
@@ -280,8 +327,8 @@ COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename) {
 	// Start at the end, in order to append.
 	LARGE_INTEGER position;
 	position.QuadPart = 0;
-	BOOL success = SetFilePointerEx(fileHandle, position, nullptr, FILE_END);
-	if (!success) {
+	BOOL success2 = SetFilePointerEx(fileHandle, position, nullptr, FILE_END);
+	if (!success2) {
 		CloseHandle(fileHandle);
 		return WriteFileHandle();
 	}
@@ -297,6 +344,10 @@ COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename) {
 }
 
 COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filename) {
+	bool success = CreateMissingDirectories(filename);
+	if (!success) {
+		return ReadWriteFileHandle();
+	}
 #ifdef _WIN32
 	HANDLE fileHandle = CreateFileWrapper(filename, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, OPEN_ALWAYS);
 	if (fileHandle == INVALID_HANDLE_VALUE) {
