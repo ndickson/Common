@@ -11,7 +11,14 @@ COMMON_LIBRARY_NAMESPACE_BEGIN
 COMMON_LIBRARY_EXPORTED bool ReadWholeFile(const char* filename, Array<char>& contents);
 
 // This returns true if the whole contents array was able to be written into the file, else false.
+// This will attempt to create any missing directories needed.
 COMMON_LIBRARY_EXPORTED bool WriteWholeFile(const char* filename, const void* contents, size_t length);
+
+// This creates any missing directories in the given path, assuming any text after the
+// final slash is intended to be a regular file, and not a directory.
+// NOTE: Paths containing ".." are supported, since ".." can be identified as
+// a directory that exists.
+COMMON_LIBRARY_EXPORTED bool CreateMissingDirectories(const char* filename);
 
 class COMMON_LIBRARY_EXPORTED FileHandle {
 protected:
@@ -134,7 +141,8 @@ template<> struct is_trivially_relocatable<ReadFileHandle> : public std::true_ty
 template<> struct is_trivially_relocatable<WriteFileHandle> : public std::true_type {};
 template<> struct is_trivially_relocatable<ReadWriteFileHandle> : public std::true_type {};
 
-// Creates a new file for appending, replacing any existing file
+// Creates a new file for appending, replacing any existing file.
+// This will attempt to create any missing directories needed.
 COMMON_LIBRARY_EXPORTED WriteFileHandle CreateFile(const char* filename);
 
 // Opens an existing file for reading
@@ -142,10 +150,12 @@ COMMON_LIBRARY_EXPORTED ReadFileHandle OpenFileRead(const char* filename);
 
 // Opens a file for appending, starting the file pointer at the end, creating
 // a new file if one didn't already exist.
+// This will attempt to create any missing directories needed.
 COMMON_LIBRARY_EXPORTED WriteFileHandle OpenFileAppend(const char* filename);
 
-// Opens a file for reading and writing. creating a new file if one didn't
-// already exist
+// Opens a file for reading and writing, creating a new file if one didn't
+// already exist.
+// This will attempt to create any missing directories needed.
 COMMON_LIBRARY_EXPORTED ReadWriteFileHandle OpenFileReadWrite(const char* filename);
 
 // Returns the number of bytes read
