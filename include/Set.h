@@ -273,7 +273,7 @@ public:
 	INLINE Set& operator=(Set&& that) noexcept {
 		data.reset(that.data.release());
 		size_ = that.size_;
-		capacity = that.capacity_;
+		capacity = that.capacity;
 		that.size_ = 0;
 		that.capacity = 0;
 		return *this;
