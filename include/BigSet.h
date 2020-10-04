@@ -158,9 +158,16 @@ protected:
 					success = numReaders.compare_exchange_strong(value, intptr_t(-1), std::memory_order_acq_rel);
 				}
 				else {
+					// This thread should have read access, and value wasn't 1,
+					// so there must be at least one more.
+					assert(value >= 2);
+
 					// There are other readers, so block new readers and wait for
 					// write access.
-					intptr_t newValue = intptr_t(-1) - value;
+					// NOTE: The +1 is because this thread gives up its reader status when
+					// it becomes the writer, i.e. when the value reaches -1.
+					// value is at least 2, so newValue will be less than or equal to -2.
+					intptr_t newValue = intptr_t(-1+1) - value;
 					success = numReaders.compare_exchange_strong(value, newValue, std::memory_order_acq_rel);
 					if (success) {
 						// Wait for the value to become -1 when all readers finish.
@@ -209,6 +216,7 @@ protected:
 		using value_type = ACCESSOR_VALUE_T;
 		using pointer = value_type*;
 		using reference = value_type&;
+		constexpr static bool isWriteAccessType = WRITE_ACCESS;
 
 		void release() {
 			if (subTable == nullptr) {
@@ -258,7 +266,7 @@ protected:
 			return false;
 		}
 
-		if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+		if (!ACCESSOR_T::isWriteAccessType) {
 			subTable->startReading();
 		}
 		else {
@@ -273,7 +281,7 @@ protected:
 		size_t targetIndex;
 		bool found = hash::findInTable<true, Hasher>(data, capacity, hashCode, key, index, targetIndex);
 		if (!found) {
-			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+			if (!ACCESSOR_T::isWriteAccessType) {
 				subTable->stopReading();
 			}
 			else {
@@ -297,7 +305,7 @@ protected:
 		size_t targetIndex = SubTable::EMPTY_INDEX;
 		bool changedFromReadToWrite = false;
 
-		if (std::is_same<ACCESSOR_T,const_accessor>::value && data != nullptr) {
+		if (!ACCESSOR_T::isWriteAccessType && data != nullptr) {
 			// First, check if the item is in the map via reading,
 			// so that if it's very common that the item is already in the set,
 			// multiple threads can check at the same time.
@@ -353,7 +361,7 @@ protected:
 				}
 				else {
 					accessor->init(subTable, data + index);
-					if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+					if (!ACCESSOR_T::isWriteAccessType) {
 						subTable->changeFromWriteToRead();
 					}
 				}
@@ -406,7 +414,7 @@ protected:
 		}
 		else {
 			accessor->init(subTable, data + index);
-			if (std::is_same<ACCESSOR_T,const_accessor>::value) {
+			if (!ACCESSOR_T::isWriteAccessType) {
 				subTable->changeFromWriteToRead();
 			}
 		}
