@@ -49,6 +49,7 @@ class Map : private Set<std::pair<KEY_T,VAL_T>,Hasher> {
 		INLINE iterator_base(INTERNAL_T* current_, const TablePair* end_) noexcept : IteratorBase(current_, end_) {}
 
 		friend Map;
+		friend Base;
 	public:
 		using ThisType = iterator_base<ITERATOR_VALUE_T,INTERNAL_T>;
 
