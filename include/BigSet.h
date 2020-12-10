@@ -2,12 +2,11 @@
 
 #include "Types.h"
 #include "HashUtil.h"
+#include "ThreadUtil.h"
 
 #include <assert.h>
 #include <atomic>
-#include <chrono>
 #include <memory>
-#include <thread>
 #include <type_traits>
 
 OUTER_NAMESPACE_BEGIN
@@ -41,20 +40,6 @@ protected:
 		~SubTable() {
 			assert(numReaders.load(std::memory_order_relaxed) == 0);
 			delete [] data;
-		}
-
-		static void backOff(size_t& attempt) {
-			if (attempt >= 16) {
-				if (attempt < 32) {
-					// Give up this timeslice.
-					std::this_thread::yield();
-				}
-				else {
-					// Sleep, in case this is waiting for lower priority threads.
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				}
-			}
-			++attempt;
 		}
 
 		void startReading() {
