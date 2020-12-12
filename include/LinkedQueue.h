@@ -27,6 +27,25 @@ public:
 		assert(tail == nullptr);
 	}
 
+	// No copying of the queue, since each item can only be in one queue.
+	LinkedQueue(const LinkedQueue&) = delete;
+	LinkedQueue& operator=(const LinkedQueue&) = delete;
+
+	// Move constructing is okay, though.
+	LinkedQueue(LinkedQueue&& that) : head(that.head), tail(that.tail) {
+		that.head.store(nullptr, std::memory_order_relaxed);
+		that.tail = nullptr;
+	}
+	LinkedQueue& operator=(LinkedQueue&& that) {
+		// The queue doesn't own any of the items, so it should be empty already.
+		assert(head.load(std::memory_order_relaxed) == nullptr);
+		assert(tail == nullptr);
+		head.store(that.head.load(std::memory_order_relaxed), std::memory_order_relaxed);
+		tail = that.tail;
+		that.head.store(nullptr, std::memory_order_relaxed);
+		that.tail = nullptr;
+	}
+
 	T* pop() volatile {
 		// Fast case for empty queue, to reduce unnecessary contention.
 		T* prevHead = head.load(std::memory_order_acquire);
@@ -102,6 +121,21 @@ public:
 		assert(head.load(std::memory_order_relaxed) == nullptr);
 	}
 
+	// No copying of the stack, since each item can only be in one stack.
+	LinkedStack(const LinkedStack&) = delete;
+	LinkedStack& operator=(const LinkedStack&) = delete;
+
+	// Move constructing is okay, though.
+	LinkedStack(LinkedStack&& that) : head(that.head) {
+		that.head.store(nullptr, std::memory_order_relaxed);
+	}
+	LinkedStack& operator=(LinkedStack&& that) {
+		// The stack doesn't own any of the items, so it should be empty already.
+		assert(head.load(std::memory_order_relaxed) == nullptr);
+		head.store(that.head.load(std::memory_order_relaxed), std::memory_order_relaxed);
+		that.head.store(nullptr, std::memory_order_relaxed);
+	}
+
 	T* pop() volatile {
 		// Fast case for empty stack, to reduce unnecessary contention.
 		T* prevHead = head.load(std::memory_order_acquire);
@@ -137,6 +171,7 @@ public:
 			if (uintptr_t(prevHead) == sentinel) {
 				// Another thread is currently popping the stack.
 				backOff(attempt);
+				prevHead = head.load(std::memory_order_acquire);
 				continue;
 			}
 			item->nextQueuePointer() = prevHead;
